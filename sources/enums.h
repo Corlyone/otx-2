@@ -80,10 +80,7 @@ enum DatabaseEngine_t
 enum Encryption_t
 {
 	ENCRYPTION_PLAIN = 0,
-	ENCRYPTION_MD5,
-	ENCRYPTION_SHA1,
-	ENCRYPTION_SHA256,
-	ENCRYPTION_SHA512
+	ENCRYPTION_SHA1
 };
 
 enum GuildLevel_t
@@ -100,7 +97,6 @@ enum Channels_t
 	CHANNEL_PARTY = 0x01,
 	CHANNEL_RVR = 0x03,
 	CHANNEL_HELP = 0x09,
-	CHANNEL_LOOT = 0x15,
 	CHANNEL_DEFAULT = 0xFFFE, //internal usage only, there is no such channel
 	CHANNEL_PRIVATE = 0xFFFF
 };
@@ -248,17 +244,30 @@ enum ConditionParam_t
 
 enum Exhaust_t
 {
-	EXHAUST_OTHER = 0,
-	EXHAUST_HEALING = 1,
-	EXHAUST_COMBAT = 2,
-	EXHAUST_MELEE = 3,
-	EXHAUST_SPELLGROUP_NONE = 4,
-	EXHAUST_SPELLGROUP_ATTACK = 5,
-	EXHAUST_SPELLGROUP_HEALING = 6,
-	EXHAUST_SPELLGROUP_SUPPORT = 7,
-	EXHAUST_SPELLGROUP_SPECIAL = 8,
-	EXHAUST_POTION = 30,
-	EXHAUST_MACHETE = 31
+	EXHAUST_SPELLGROUP_NONE = 1,
+	EXHAUST_SPELLGROUP_ATTACK = 2,
+	EXHAUST_SPELLGROUP_HEALING = 3,
+	EXHAUST_SPELLGROUP_SUPPORT = 4,
+	EXHAUST_SPELLGROUP_SPECIAL = 5,
+	EXHAUST_MELEE = 6
+};
+
+enum ExhaustSubId_t
+{
+	EXHAUST_DEFAULT = 1,
+	EXHAUST_TALKNPC = 2,
+	EXHAUST_PLAYERVIP = 3,
+	EXHAUST_OUTFIT = 4,
+	EXHAUST_PARTY = 5,
+	EXHAUST_PLAYERSPEAK = 6,
+	EXHAUST_PLAYERLOOK = 7,
+	EXHAUST_PLAYERTRADE = 8,
+	EXHAUST_PLAYEROPENCHANNEL = 9,
+	EXHAUST_PLAYERLOOKSHOP = 10,
+	EXHAUST_PLAYERLOOKTRADE = 11,
+	EXHAUST_PLAYERPURCHASEITEM = 12,
+	EXHAUST_PLAYERSELLITEM = 13,
+	EXHAUST_TALKACTION = 14
 };
 
 enum BlockType_t
@@ -380,21 +389,21 @@ struct Outfit_t
 	Outfit_t()
 	{
 		lookType = lookTypeEx = 0;
-		lookHead = lookBody = lookLegs = lookFeet = lookAddons = lookMount = 0;
+		lookHead = lookBody = lookLegs = lookFeet = lookAddons = 0;
 	}
 	Outfit_t(uint16_t _lookType)
 	{
 		lookType = _lookType;
 		lookTypeEx = 0;
-		lookHead = lookBody = lookLegs = lookFeet = lookAddons = lookMount = 0;
+		lookHead = lookBody = lookLegs = lookFeet = lookAddons = 0;
 	}
 
-	uint16_t lookType, lookTypeEx, lookMount;
+	uint16_t lookType, lookTypeEx;
 	uint8_t lookHead, lookBody, lookLegs, lookFeet, lookAddons;
 
 	bool operator==(const Outfit_t& o) const
 	{
-		return (o.lookAddons == lookAddons && o.lookMount == lookMount
+		return (o.lookAddons == lookAddons
 			&& o.lookType == lookType && o.lookTypeEx == lookTypeEx
 			&& o.lookHead == lookHead && o.lookBody == lookBody
 			&& o.lookLegs == lookLegs && o.lookFeet == lookFeet);

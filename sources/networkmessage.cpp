@@ -1,21 +1,19 @@
-/**
- * The Forgotten Server - a free and open-source MMORPG server emulator
- * Copyright (C) 2016  Mark Samman <mark.samman@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+////////////////////////////////////////////////////////////////////////
+// OpenTibia - an opensource roleplaying game
+////////////////////////////////////////////////////////////////////////
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+////////////////////////////////////////////////////////////////////////
 
 #include "otpch.h"
 
@@ -95,16 +93,11 @@ void NetworkMessage::addPosition(const Position& pos)
 	addByte(pos.z);
 }
 
-void NetworkMessage::addItem(uint16_t id, uint8_t count, bool useReplacement)
+void NetworkMessage::addItem(uint16_t id, uint8_t count)
 {
 	const ItemType& it = Item::items[id];
 
-	if (useReplacement && it.replaceId > 0) {
-		add<uint16_t>(it.replaceId);
-	} else {
-		add<uint16_t>(it.clientId);
-	}
-
+	add<uint16_t>(it.clientId);
 	if (it.stackable) {
 		addByte(count);
 	} else if (it.isSplash() || it.isFluidContainer()) {
@@ -112,16 +105,11 @@ void NetworkMessage::addItem(uint16_t id, uint8_t count, bool useReplacement)
 	}
 }
 
-void NetworkMessage::addItem(const Item* item, bool useReplacement)
+void NetworkMessage::addItem(const Item* item)
 {
 	const ItemType& it = Item::items[item->getID()];
 
-	if (useReplacement && it.replaceId > 0) {
-		add<uint16_t>(it.replaceId);
-	} else {
-		add<uint16_t>(it.clientId);
-	}
-
+	add<uint16_t>(it.clientId);
 	if (it.stackable) {
 		addByte(std::min<uint16_t>(0xFF, item->getItemCount()));
 	} else if (it.isSplash() || it.isFluidContainer()) {
@@ -129,13 +117,7 @@ void NetworkMessage::addItem(const Item* item, bool useReplacement)
 	}
 }
 
-void NetworkMessage::addItemId(uint16_t itemId, bool useReplacement)
+void NetworkMessage::addItemId(uint16_t itemId)
 {
-	if (useReplacement && Item::items[itemId].replaceId > 0) {
-		add<uint16_t>(Item::items[itemId].replaceId);
-		return;
-	}
-
 	add<uint16_t>(Item::items[itemId].clientId);
 }
-

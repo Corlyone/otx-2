@@ -54,11 +54,15 @@ class Monster : public Creature
 		virtual const Monster* getMonster() const {return this;}
 		virtual CreatureType_t getType() const {return CREATURETYPE_MONSTER;}
 
-		void setID() {
-			if (id == 0) {
+		static uint32_t monsterAutoID;
+		void setID() override
+		{
+			if(id == 0) {
 				id = monsterAutoID++;
 			}
 		}
+
+		virtual uint32_t rangeId() {return MONSTER_ID_RANGE;}
 		static AutoList<Monster> autoList;
 
 		void addList() {autoList[id] = this;}
@@ -80,6 +84,7 @@ class Monster : public Creature
 		bool canPushItems() const {return mType->canPushItems;}
 		bool canPushCreatures() const {return mType->canPushCreatures;}
 		bool isHostile() const;
+		bool isPassive() const {return mType->isPassive;}
 		virtual bool isWalkable() const;
 		virtual bool canSeeInvisibility() const {return Creature::isImmune(CONDITION_INVISIBLE);}
 		uint32_t getManaCost() const {return mType->manaCost;}
@@ -118,7 +123,7 @@ class Monster : public Creature
 		bool selectTarget(Creature* creature);
 
 		const CreatureList& getTargetList() {return targetList;}
-		const CreatureList& getFriendList() {return friendList;}
+		const std::unordered_map<uint32_t, Creature*>& getFriendList() { return friendList; }
 
 		bool isTarget(Creature* creature);
 		bool getIdleStatus() const {return isIdle;}
@@ -128,11 +133,9 @@ class Monster : public Creature
 		virtual BlockType_t blockHit(Creature* attacker, CombatType_t combatType, int32_t& damage,
 			bool checkDefense = false, bool checkArmor = false, bool reflect = true, bool field = false, bool element = false);
 
-		static uint32_t monsterAutoID;
-
 	private:
 		CreatureList targetList;
-		CreatureList friendList;
+		std::unordered_map<uint32_t, Creature*> friendList;
 
 		MonsterType* mType;
 
@@ -176,7 +179,7 @@ class Monster : public Creature
 		void updateIdleStatus();
 
 		virtual void onAddCondition(ConditionType_t type, bool hadCondition);
-		virtual void onEndCondition(ConditionType_t type);
+		virtual void onEndCondition(ConditionType_t type, ConditionId_t id);
 		virtual void onCreatureConvinced(const Creature* convincer, const Creature* creature);
 
 		bool canUseAttack(const Position& pos, const Creature* target) const;

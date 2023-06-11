@@ -106,10 +106,6 @@ bool Outfits::parseOutfitNode(xmlNodePtr p)
 			continue;
 		}
 
-		if (readXMLInteger(listNode, "replaceType", intValue) || readXMLInteger(listNode, "replacetype", intValue)) {
-			outfit.replaceType = intValue;
-		}
-
 		IntegerVec intVector;
 		if(!parseIntegerVec(strValue, intVector))
 		{

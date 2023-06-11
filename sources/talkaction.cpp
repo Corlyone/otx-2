@@ -44,7 +44,6 @@
 #include "game.h"
 #include "chat.h"
 #include "tools.h"
-#include "resources.h"
 
 extern ConfigManager g_config;
 extern Game g_game;
@@ -175,6 +174,15 @@ bool TalkActions::onPlayerSay(Creature* creature, uint16_t channelId, const std:
 
 	if(!talkAction || (talkAction->getChannel() != -1 && talkAction->getChannel() != channelId))
 		return false;
+	
+	if (Player* player = creature->getPlayer())
+	{
+		if (player->hasCondition(CONDITION_EXHAUST, EXHAUST_TALKACTION))
+		{
+			player->sendTextMessage(MSG_STATUS_SMALL, "Please wait a few seconds before using this command again.");
+			return true;
+		}
+	}
 
 	Player* player = creature->getPlayer();
 	if(player)
@@ -188,7 +196,7 @@ bool TalkActions::onPlayerSay(Creature* creature, uint16_t channelId, const std:
 			|| (talkAction->hasGroups() && !talkAction->hasGroup(player->getGroupId()))))
 			|| player->isAccountManager())
 		{
-			if(player)
+			if(player->hasCustomFlag(PlayerCustomFlag_GamemasterPrivileges))
 			{
 				player->sendTextMessage(MSG_STATUS_SMALL, "You cannot execute this talkaction.");
 				return true;
@@ -204,9 +212,15 @@ bool TalkActions::onPlayerSay(Creature* creature, uint16_t channelId, const std:
 	if(talkAction->isLogged())
 	{
 		if(player)
-			player->sendTextMessage(MSG_EVENT_ORANGE, words.c_str());
+			player->sendTextMessage(MSG_EVENT_ORANGE, words);
 
 		Logger::getInstance()->eFile("talkactions/" + creature->getName() + ".log", words, true);
+	}
+	
+	if (Condition* condition = Condition::createCondition(CONDITIONID_DEFAULT, CONDITION_EXHAUST, 1000, 0, false, EXHAUST_TALKACTION))
+	{
+		if (!player->hasFlag(PlayerFlag_HasNoExhaustion))
+			player->addCondition(condition);
 	}
 
 	if(talkAction->isScripted())
@@ -302,8 +316,6 @@ bool TalkAction::loadFunction(const std::string& functionName)
 	m_functionName = asLowerCaseString(functionName);
 	if(m_functionName == "housebuy")
 		m_function = houseBuy;
-	else if(m_functionName == "autoloot")
-		m_function = autoLoot;
 	else if(m_functionName == "housesell")
 		m_function = houseSell;
 	else if(m_functionName == "housekick")
@@ -348,7 +360,7 @@ int32_t TalkAction::executeSay(Creature* creature, const std::string& words, std
 		if(m_scripted == EVENT_SCRIPT_BUFFER)
 		{
 			env->setRealPos(creature->getPosition());
-			std::stringstream scriptstream;
+			std::ostringstream scriptstream;
 			scriptstream << "local cid = " << env->addThing(creature) << std::endl;
 
 			scriptstream << "local words = \"" << words << "\"" << std::endl;
@@ -411,7 +423,7 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 	{
 		player->sendCancel("You have to be looking at door of flat you would like to purchase.");
 		g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-		return true;
+		return false;
 	}
 
 	House* house = tile->getHouse();
@@ -419,21 +431,21 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 	{
 		player->sendCancel("You have to be looking at door of flat you would like to purchase.");
 		g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-		return true;
+		return false;
 	}
 
 	if(!house->getDoorByPosition(pos))
 	{
 		player->sendCancel("You have to be looking at door of flat you would like to purchase.");
 		g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-		return true;
+		return false;
 	}
 
 	if(house->isBidded())
 	{
 		player->sendCancel("You cannot buy house which is currently bidded on an auction.");
 		g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-		return true;
+		return false;
 	}
 
 	if(!house->isGuild())
@@ -442,7 +454,7 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 		{
 			player->sendCancel("You already rent another house.");
 			g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-			return true;
+			return false;
 		}
 
 		uint16_t accountHouses = g_config.getNumber(ConfigManager::HOUSES_PER_ACCOUNT);
@@ -453,7 +465,7 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 
 			player->sendCancel(buffer);
 			g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-			return true;
+			return false;
 		}
 
 		if(g_config.getBool(ConfigManager::HOUSE_NEED_PREMIUM) && !player->isPremium())
@@ -470,7 +482,7 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 			sprintf(buffer, "You have to be at least Level %d to purchase a house.", levelToBuyHouse);
 			player->sendCancel(buffer);
 			g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
-			return true;
+			return false;
 		}
 	}
 	else
@@ -544,152 +556,10 @@ bool TalkAction::houseBuy(Creature* creature, const std::string&, const std::str
 		ret += "bank or ";
 
 	ret += "depot of this town for rent.";
-	player->sendTextMessage(MSG_INFO_DESCR, ret.c_str());
+	player->sendTextMessage(MSG_INFO_DESCR, ret);
 
 	g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_WRAPS_BLUE);
 	return false;
-}
-
-bool TalkAction::autoLoot(Creature* creature, const std::string&, const std::string& param)
-{
-	Player* player = creature->getPlayer();
-	if(!player)
-		return false;
-
-	StringVec params = explodeString(param, ",");
-	std::stringstream info;
-	if(params[0] == "on" or params[0] == "off") {
-		player->updateStatusAutoLoot((params[0] == "on" ? true : false));
-		info << "Autoloot-> Status: " << (player->statusAutoLoot()) << ".";
-		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, info.str());
-		return true;
-	}
-	if(params[0] == "clear" or params[0] == "clean") {
-		player->clearAutoLoot();
-		info << "Autoloot-> Todos itens removidos.";
-		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, info.str());
-		return true;
-	}
-	if(params[0] == "list" or params[0] == "lista") {
-		std::list<uint16_t> list = player->getAutoLoot();
-		std::list<uint16_t>::iterator it = list.begin();
-		std::string msg = g_config.getString(ConfigManager::MONEYID_AUTOLOOT);
-		StringVec strVector = explodeString(msg, ";");
-		for(StringVec::iterator itt = strVector.begin(); itt != strVector.end(); ++itt) {
-			++it;
-		}
-		uint16_t i = 1;
-		for(; it != list.end(); ++it) {	
-			info << i << ": " << Item::items[(*it)].name << std::endl;
-			++i;
-		}
-		player->sendFYIBox((info.str() == "" ? "Nada Adicionado." : info.str()));
-		list = player->getAutoLoot();
-		return true;
-	}
-	
-	if(params.size() <= 1) {
-		info << "_____Perfect AutoLoot System_____\nAutoLoot Status: " << player->statusAutoLoot() << "\nAutoMoney Mode: " << player->statusAutoMoneyCollect() << "\n\nComandos:\n!autoloot on/off\n!autoloot money, bank/bag\n!autoloot add, item name, item name, item name...\n!autoloot remove, item name, item name, item name...\n!autoloot list\n!autoloot clear\n\n\n (Sistema Exclusivo do Baiak-Hells!)";
-		player->sendFYIBox(info.str());
-		return true;
-	}
-
-	if(params[0] == "money") {
-		for(StringVec::iterator it = params.begin(); it != params.end(); ++it) {
-			if((*it) == "money") {
-				continue;
-			}
-			char param[150];
-			sprintf(param, "%s", (*it).c_str());
-			int len = strlen(param);
-			for (int i = 0, pos = 0; i < len; i++, pos++) {
-				if (param[0] == ' '){
-					pos++;
-				}
-				param[i] = param[pos];
-			}
-			if((strcmp(param, "bank") == 0) or (strcmp(param, "bag") == 0)) {
-				player->updateMoneyCollect((strcmp(param, "bank") == 0) ? true : false);
-				info << "AutoMoney-> Collect Mode: " << (player->statusAutoMoneyCollect()) << ".";
-				player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, info.str());
-				return true;
-			}
-		}
-	}
-
-	if(params[0] == "add") {
-		std::stringstream add, err;
-		uint8_t addCount = 0, errCount = 0;
-		std::stringstream ss;
-		for(StringVec::iterator it = params.begin(); it != params.end(); ++it) {
-			if((*it) == "add") {
-				continue;
-			}
-			char name[150];
-			sprintf(name, "%s", (*it).c_str());
-			int len = strlen(name);
-			for (int i = 0, pos = 0; i < len; i++, pos++) {
-				if (name[0] == ' '){
-					pos++;
-				}
-				name[i] = name[pos];
-			}
-			int32_t itemId = Item::items.getItemIdByName(name);
-			if(!player->checkAutoLoot(itemId) && !player->limitAutoLoot()) {
-				if(itemId > 0) {
-					std::string str = addCount > 0 ? ", " : "";
-					++addCount;
-					add << str << name;
-					player->addAutoLoot(itemId);
-					continue;
-				}
-			}
-			std::string str = errCount > 0 ? ", " : "";
-			++errCount;
-			err << str << name;
-		}
-		ss << "AutoLoot-> Adicionados: " << ((add.str() == "") ? "Nenhum" : add.str()) << ". Erros: " << ((err.str() == "") ? "Nenhum" : err.str()) << ".";
-		player->sendTextMessage(MSG_STATUS_CONSOLE_RED, ss.str());
-		return true;
-	}
-
-	if(params[0] == "remove") {
-		std::stringstream remove, err;
-		uint8_t removeCount = 0, errCount = 0;
-		std::stringstream ss;
-		for(StringVec::iterator it = params.begin(); it != params.end(); ++it) {
-			if((*it) == "remove") {
-				continue;
-			}
-			char name[150];
-			sprintf(name, "%s", (*it).c_str());
-			int len = strlen(name);
-			for (int i = 0, pos = 0; i < len; i++, pos++) {
-				if (name[0] == ' '){
-					pos++;
-				}
-				name[i] = name[pos];
-			}
-			int32_t itemId = Item::items.getItemIdByName(name);
-			if(player->checkAutoLoot(itemId)) {
-				if(itemId > 0) {
-					std::string str = removeCount > 0 ? ", " : "";
-					++removeCount;
-					remove << str << name;
-					player->removeAutoLoot(itemId);
-					continue;
-				}
-			}
-			std::string str = errCount > 0 ? ", " : "";
-			++errCount;
-			err << str << name;
-		}
-		ss << "AutoLoot-> Removidos: " << ((remove.str() == "") ? "Nenhum" : remove.str()) << ". Erros: " << ((err.str() == "") ? "Nenhum" : err.str()) << ".";
-		player->sendTextMessage(MSG_STATUS_CONSOLE_ORANGE, ss.str());
-		return true;
-	}
-	
-	return true;
 }
 
 bool TalkAction::houseSell(Creature* creature, const std::string&, const std::string& param)
@@ -757,7 +627,7 @@ bool TalkAction::houseSell(Creature* creature, const std::string&, const std::st
 			return false;
 		}
 
-		if(!tradePartner->isPremium() && !g_config.getBool(ConfigManager::HOUSE_NEED_PREMIUM))
+		if(!tradePartner->isPremium() && g_config.getBool(ConfigManager::HOUSE_NEED_PREMIUM))
 		{
 			player->sendCancel("Trade player does not have a premium account.");
 			g_game.addMagicEffect(player->getPosition(), MAGIC_EFFECT_POFF);
@@ -992,27 +862,27 @@ bool TalkAction::guildCreate(Creature* creature, const std::string&, const std::
 	const uint32_t levelToFormGuild = g_config.getNumber(ConfigManager::LEVEL_TO_FORM_GUILD);
 	if(player->getLevel() < levelToFormGuild)
 	{
-		std::stringstream stream;
+		std::ostringstream stream;
 		stream << "You have to be at least Level " << levelToFormGuild << " to form a guild.";
-		player->sendCancel(stream.str().c_str());
+		player->sendCancel(stream.str());
 		return true;
 	}
 
 	const int32_t premiumDays = g_config.getNumber(ConfigManager::GUILD_PREMIUM_DAYS);
 	if(player->getPremiumDays() < premiumDays && !g_config.getBool(ConfigManager::FREE_PREMIUM))
 	{
-		std::stringstream stream;
+		std::ostringstream stream;
 		stream << "You need to have at least " << premiumDays << " premium days to form a guild.";
-		player->sendCancel(stream.str().c_str());
+		player->sendCancel(stream.str());
 		return true;
 	}
 
 	player->setGuildName(param_);
 	IOGuild::getInstance()->createGuild(player);
 
-	std::stringstream stream;
-	stream << "You have formed guild \"" << param.c_str() << "\"!";
-	player->sendTextMessage(MSG_EVENT_GUILD, stream.str().c_str());
+	std::ostringstream stream;
+	stream << "You have formed guild \"" << param << "\"!";
+	player->sendTextMessage(MSG_EVENT_GUILD, stream.str());
 	return true;
 }
 
@@ -1087,7 +957,7 @@ bool TalkAction::thingProporties(Creature* creature, const std::string&, const s
 			}
 			else
 			{
-				std::stringstream s;
+				std::ostringstream s;
 				s << action << " (" << parseParams(it, tokens.end()) << ")";
 				invalid += s.str();
 				break;
@@ -1188,7 +1058,7 @@ bool TalkAction::thingProporties(Creature* creature, const std::string&, const s
 					_player->switchSaving();
 				else
 				{
-					std::stringstream s;
+					std::ostringstream s;
 					s << action << " (" << parseParams(it, tokens.end()) << ")";
 					invalid += s.str();
 					break;
@@ -1202,7 +1072,7 @@ bool TalkAction::thingProporties(Creature* creature, const std::string&, const s
 			}*/
 			else
 			{
-				std::stringstream s;
+				std::ostringstream s;
 				s << action << " (" << parseParams(it, tokens.end()) << ")";
 				invalid += s.str();
 				break;
@@ -1228,7 +1098,7 @@ bool TalkAction::thingProporties(Creature* creature, const std::string&, const s
 	else
 	{
 		std::string tmp = "Following action was invalid: " + invalid;
-		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, tmp.c_str());
+		player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, tmp);
 	}
 
 	g_game.addMagicEffect(pos, MAGIC_EFFECT_WRAPS_GREEN);
@@ -1310,11 +1180,11 @@ bool TalkAction::banishmentInfo(Creature* creature, const std::string&, const st
 	if(deletion)
 		end = what + (std::string)" won't be undeleted";
 
-	std::stringstream ss;
-	ss << what.c_str() << " has been " << (deletion ? "deleted" : "banished") << " at:\n" << formatDateEx(ban.added, "%d %b %Y").c_str() << " by: " <<
-		admin.c_str() << ".\nThe comment given was:\n" << ban.comment.c_str() << ".\n" << end.c_str() << (deletion ? "." : formatDateEx(ban.expires).c_str()) << ".";
+	std::ostringstream ss;
+	ss << what << " has been " << (deletion ? "deleted" : "banished") << " at:\n" << formatDateEx(ban.added, "%d %b %Y") << " by: " <<
+		admin << ".\nThe comment given was:\n" << ban.comment << ".\n" << end << (deletion ? "." : formatDateEx(ban.expires)) << ".";
 
-	player->sendFYIBox(ss.str().c_str());
+	player->sendFYIBox(ss.str());
 	return true;
 }
 
@@ -1325,7 +1195,7 @@ bool TalkAction::diagnostics(Creature* creature, const std::string&, const std::
 		return false;
 #ifdef __ENABLE_SERVER_DIAGNOSTIC__
 
-	std::stringstream s;
+	std::ostringstream s;
 	s << "Server diagonostic:" << std::endl;
 	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, s.str());
 
@@ -1333,6 +1203,7 @@ bool TalkAction::diagnostics(Creature* creature, const std::string&, const std::
 	s << "World:" << std::endl
 		<< "--------------------" << std::endl
 		<< "Player: " << g_game.getPlayersOnline() << " (" << Player::playerCount << ")" << std::endl
+		<< "Unique Players: " << g_game.getUniquePlayersOnline() << " (" << Player::playerCount << ")" << std::endl
 		<< "Npc: " << g_game.getNpcsOnline() << " (" << Npc::npcCount << ")" << std::endl
 		<< "Monster: " << g_game.getMonstersOnline() << " (" << Monster::monsterCount << ")" << std::endl << std::endl;
 	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, s.str());
@@ -1346,7 +1217,7 @@ bool TalkAction::diagnostics(Creature* creature, const std::string&, const std::
 		<< "ProtocolAdmin: " << ProtocolAdmin::protocolAdminCount << std::endl
 #endif
 		<< "ProtocolManager: " << ProtocolManager::protocolManagerCount << std::endl;
-	/*
+		/*
 		<< "ProtocolStatus: " << ProtocolStatus::protocolStatusCount << std::endl
 		<< "ProtocolOld: " << ProtocolOld::protocolOldCount << std::endl << std::endl;*/
 	player->sendTextMessage(MSG_STATUS_CONSOLE_BLUE, s.str());
@@ -1439,9 +1310,8 @@ bool TalkAction::software(Creature* creature, const std::string&, const std::str
 	if(!player)
 		return false;
 
-	std::stringstream s;
-		s << "The " << SOFTWARE_NAME << " Version: (" << SOFTWARE_VERSION << "." << MINOR_VERSION << "." << PATCH_VERSION << ")" << std::endl;
-		s << REVISION_VERSION << std::endl;
+	std::ostringstream s;
+		s << "The " << SOFTWARE_NAME << " Version: (" << SOFTWARE_VERSION << "." << MINOR_VERSION << ")" << std::endl;
 		s << "Codename: (" << SOFTWARE_CODENAME << ")" << std::endl << std::endl;
 		s << "Server Developers: " << SOFTWARE_DEVELOPERS << "." << std::endl;
 

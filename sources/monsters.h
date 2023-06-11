@@ -89,10 +89,10 @@ class MonsterType
 
 		void dropLoot(Container* corpse);
 		ItemList createLoot(const LootBlock& lootBlock);
-		bool createChildLoot(Container* parent, const LootBlock& lootBlock, uint32_t& money, std::stringstream& str, Player* player);
+		bool createChildLoot(Container* parent, const LootBlock& lootBlock);
 
-		bool isSummonable, isIllusionable, isConvinceable, isAttackable, isHostile, isLureable,
-			isWalkable, canPushItems, canPushCreatures, pushable, hideName, hideHealth, eliminable, playerblockspawn;
+		bool isSummonable, isIllusionable, isConvinceable, isAttackable, isHostile, isPassive, isLureable,
+			isWalkable, canPushItems, canPushCreatures, pushable, hideName, hideHealth, eliminable;
 
 		Outfit_t outfit;
 		RaceType_t race;

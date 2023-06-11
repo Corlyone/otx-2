@@ -41,22 +41,14 @@ class Spectators
 			id = 0;
 			broadcast = false;
 			auth = false;
-			broadcast_time = 0;
-			liverecord = 0;
-			squareEventId = 0;
 		}
 		virtual ~Spectators() {}
 
 		void clear(bool full)
 		{
-			for (SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it) {
-				if (!it->first->twatchername.empty()) {
-					it->first->parseTelescopeBack(true);
-					continue;
-				}
-
+			for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
 				it->first->disconnect();
-			}
+
 			spectators.clear();
 			mutes.clear();
 
@@ -67,8 +59,6 @@ class Spectators
 			bans.clear();
 			password = "";
 			broadcast = auth = false;
-			broadcast_time = 0;
-			liverecord = 0;
 		}
 
 		bool check(const std::string& _password);
@@ -114,29 +104,12 @@ class Spectators
 
 		bool isBroadcasting() const {return broadcast;}
 		void setBroadcast(bool value) {broadcast = value;}
-		
-		std::string getBroadCastTimeString() const {
-			std::stringstream broadcast;
-			int64_t seconds = getBroadcastTime() / 1000;
 
-			uint16_t hour = floor(seconds / 60 / 60 % 24);
-			uint16_t minute = floor(seconds / 60 % 60);
-			uint16_t second = floor(seconds % 60);
-
-			if (hour > 0) { broadcast << hour << " hours, "; }
-			if (minute > 0) { broadcast << minute << " minutes and "; }
-			broadcast << second << " seconds.";
-			return broadcast.str();
-		}
-		
 		bool isAuth() const {return auth;}
 		void setAuth(bool value) {auth = value;}
 
 		void addSpectator(ProtocolGame* client);
 		void removeSpectator(ProtocolGame* client);
-
-		int64_t getBroadcastTime() const { return OTSYS_TIME() - broadcast_time; }
-		void setBroadcastTime(int64_t time) { broadcast_time = time; }
 
 		// inherited
 		uint32_t getIP() const
@@ -172,9 +145,6 @@ class Spectators
 		uint32_t id;
 		std::string password;
 		bool broadcast, auth;
-		int64_t broadcast_time;
-		uint16_t liverecord;
-		uint32_t squareEventId;
 
 		// inherited
 		bool canSee(const Position& pos) const
@@ -195,15 +165,6 @@ class Spectators
 
 			owner->sendChannelsDialog(channels);
 		}
-
-		void sendCastList()
-		{
-			if (!owner)
-				return;
-
-			owner->sendCastList();
-		}
-
 		void sendChannel(uint16_t channelId, const std::string& channelName)
 		{
 			if(!owner)
@@ -234,7 +195,17 @@ class Spectators
 
 			owner->sendFYIBox(message);
 		}
+#ifdef __EXTENDED_DISTANCE_SHOOT__
+		void sendDistanceShoot(const Position& from, const Position& to, uint16_t type)
+		{
+			if(!owner)
+				return;
 
+			owner->sendDistanceShoot(from, to, type);
+			for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
+				it->first->sendDistanceShoot(from, to, type);
+		}
+#else
 		void sendDistanceShoot(const Position& from, const Position& to, uint8_t type)
 		{
 			if(!owner)
@@ -244,15 +215,30 @@ class Spectators
 			for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
 				it->first->sendDistanceShoot(from, to, type);
 		}
-		void sendMagicEffect(const Position& pos, uint8_t type)
-		{
-			if(!owner)
-				return;
+#endif
 
-			owner->sendMagicEffect(pos, type);
-			for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
-				it->first->sendMagicEffect(pos, type);
-		}
+#ifdef __EXTENDED_MAGIC_EFFECTS__
+	void sendMagicEffect(const Position& pos, uint16_t type)
+	{
+		if(!owner)
+			return;
+
+		owner->sendMagicEffect(pos, type);
+		for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
+			it->first->sendMagicEffect(pos, type);
+	}
+#else
+	void sendMagicEffect(const Position& pos, uint8_t type)
+	{
+		if(!owner)
+			return;
+
+		owner->sendMagicEffect(pos, type);
+		for(SpectatorList::iterator it = spectators.begin(); it != spectators.end(); ++it)
+			it->first->sendMagicEffect(pos, type);
+	}
+#endif
+		
 		void sendAnimatedText(const Position& pos, uint8_t color, const std::string& text)
 		{
 			if(!owner)

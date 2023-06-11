@@ -28,7 +28,7 @@
 
 #include "configmanager.h"
 #include "game.h"
-#include "resources.h"
+
 
 extern ConfigManager g_config;
 extern Game g_game;
@@ -130,16 +130,15 @@ void ProtocolStatus::sendStatusString()
 	sprintf(buffer, "%d", g_game.getPlayersWithMcLimit());
 	xmlSetProp(p, (const xmlChar*)"online", (const xmlChar*)buffer);
 
-
-	sprintf(buffer, "%d", g_game.getPlayersOnlineUnique());
-	xmlSetProp(p, (const xmlChar*)"unique", (const xmlChar*)buffer);
-
 	sprintf(buffer, "%d", (int32_t)g_config.getNumber(ConfigManager::MAX_PLAYERS));
 	xmlSetProp(p, (const xmlChar*)"max", (const xmlChar*)buffer);
-	
+
 	sprintf(buffer, "%d", g_game.getPlayersRecord());
 	xmlSetProp(p, (const xmlChar*)"peak", (const xmlChar*)buffer);
-	
+
+	sprintf(buffer, "%d", g_game.getUniquePlayersOnline());
+	xmlSetProp(p, (const xmlChar*)"unique_players", (const xmlChar*)buffer);
+
 	xmlAddChild(root, p);
 
 	p = xmlNewNode(NULL,(const xmlChar*)"monsters");
@@ -148,7 +147,7 @@ void ProtocolStatus::sendStatusString()
 	xmlAddChild(root, p);
 
 	p = xmlNewNode(NULL,(const xmlChar*)"npcs");
-	sprintf(buffer, "%d", g_game.getPlayersOnline());
+	sprintf(buffer, "%d", g_game.getNpcsOnline());
 	xmlSetProp(p, (const xmlChar*)"total", (const xmlChar*)buffer);
 	xmlAddChild(root, p);
 

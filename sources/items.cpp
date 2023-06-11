@@ -26,7 +26,6 @@
 #include "weapons.h"
 #include "spells.h"
 
-#include "resources.h"
 
 extern Spells* g_spells;
 extern ConfigManager g_config;
@@ -56,7 +55,6 @@ ItemType::ItemType()
 
 	speed = id = 0;
 	clientId = 100;
-	replaceId = 0;
 	maxItems = 8; //maximum size if this is a container
 	weight = 0; //weight of the item, e.g. throwing distance depends on it
 	showCount = true;
@@ -70,6 +68,7 @@ ItemType::ItemType()
 	attack = extraAttack = 0;
 	defense = extraDefense = 0;
 	attackSpeed = 0;
+	criticalHitChance = 0;
 	armor = 0;
 	decayTo = -1;
 	decayTime = 0;
@@ -380,7 +379,7 @@ int32_t Items::loadFromOtb(std::string file)
 
 		// store the found item
 		items.addElement(iType, iType->id);
-		if(iType->clientId) {
+		if (iType->clientId) {
 			if (reverseItemMap.find(iType->clientId) == reverseItemMap.end())
 				reverseItemMap[iType->clientId] = iType->id;
 		}
@@ -575,10 +574,6 @@ void Items::parseItemNode(xmlNodePtr itemNode, uint32_t id)
 	else
 		it.loaded = true;
 
-	if(readXMLInteger(itemNode, "replaceId", intValue)) {
-		it.replaceId = Item::items[intValue].clientId;
-	}
-
 	if(readXMLString(itemNode, "name", strValue))
 		it.name = strValue;
 
@@ -736,6 +731,11 @@ void Items::parseItemNode(xmlNodePtr itemNode, uint32_t id)
 				it.extraDefenseRndMin = intValue;
 			if(readXMLInteger(itemAttributesNode, "random_max", intValue))
 				it.extraDefenseRndMax = intValue;
+		}
+		else if(tmpStrValue == "criticalhitchance")
+		{
+			if(readXMLInteger(itemAttributesNode, "value", intValue))
+				it.criticalHitChance = intValue;
 		}
 		else if(tmpStrValue == "attack")
 		{
@@ -1453,7 +1453,7 @@ void Items::parseItemNode(xmlNodePtr itemNode, uint32_t id)
 			if(readXMLInteger(itemAttributesNode, "value", intValue))
 				it.getAbilities()->reflect[REFLECT_PERCENT][COMBAT_FIREDAMAGE] += intValue;
 		}
-		else if(tmpStrValue == "reflectpercentpoison" ||	tmpStrValue == "reflectpercentearth")
+		else if(tmpStrValue == "reflectpercentpoison" || tmpStrValue == "reflectpercentearth")
 		{
 			if(readXMLInteger(itemAttributesNode, "value", intValue))
 				it.getAbilities()->reflect[REFLECT_PERCENT][COMBAT_EARTHDAMAGE] += intValue;

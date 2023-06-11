@@ -405,7 +405,7 @@ MoveEvent* MoveEvents::getEvent(Item* item, uint16_t uniqueId, uint16_t actionId
 {
 	MoveListMap::iterator it;
 
-	if(uniqueId)
+	if (uniqueId)
 	{
 		it = m_uniqueIdMap.find(uniqueId);
 		if(it != m_uniqueIdMap.end())
@@ -416,7 +416,7 @@ MoveEvent* MoveEvents::getEvent(Item* item, uint16_t uniqueId, uint16_t actionId
 		}
 	}
 
-	if(actionId)
+	if (actionId)
 	{
 		it = m_actionIdMap.find(actionId);
 		if(it != m_actionIdMap.end())
@@ -584,7 +584,7 @@ uint32_t MoveEvents::onCreatureMove(Creature* actor, Creature* creature, const T
 		//We cannot use iterators here since the scripts can invalidate the iterator
 		for(uint32_t i = 0; i < m_lastCacheItemVector.size(); ++i)
 		{
-			if((tileItem = m_lastCacheItemVector[i]) && (moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), eventType)))
+			if ((tileItem = m_lastCacheItemVector[i]) && (moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), eventType)))
 				ret &= moveEvent->fireStepEvent(actor, creature, tileItem, tile->getPosition(), fromPos, toPos);
 		}
 
@@ -601,7 +601,7 @@ uint32_t MoveEvents::onCreatureMove(Creature* actor, Creature* creature, const T
 		if(!(thing = tile->__getThing(i)) || !(tileItem = thing->getItem()))
 			continue;
 
-		if((moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), eventType)))
+		if ((moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), eventType)))
 		{
 			m_lastCacheItemVector.push_back(tileItem);
 			ret &= moveEvent->fireStepEvent(actor, creature, tileItem, tile->getPosition(), fromPos, toPos);
@@ -659,7 +659,7 @@ uint32_t MoveEvents::onItemMove(Creature* actor, Item* item, Tile* tile, bool is
 		//We cannot use iterators here since the scripts can invalidate the iterator
 		for(uint32_t i = 0; i < m_lastCacheItemVector.size(); ++i)
 		{
-			if((tileItem = m_lastCacheItemVector[i]) && tileItem != item
+			if ((tileItem = m_lastCacheItemVector[i]) && tileItem != item
 				&& (moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), tileEventType)))
 				ret &= moveEvent->fireAddRemItem(actor, item, tileItem, tile->getPosition());
 		}
@@ -677,7 +677,7 @@ uint32_t MoveEvents::onItemMove(Creature* actor, Item* item, Tile* tile, bool is
 		if(!(thing = tile->__getThing(i)) || !(tileItem = thing->getItem()) || tileItem == item)
 			continue;
 
-		if((moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), tileEventType)))
+		if ((moveEvent = getEvent(tileItem, tileItem->getUniqueId(), tileItem->getActionId(), tileEventType)))
 		{
 			m_lastCacheItemVector.push_back(tileItem);
 			ret &= moveEvent->fireAddRemItem(actor, item, tileItem, tile->getPosition());
@@ -1187,7 +1187,7 @@ uint32_t MoveEvent::executeStep(Creature* actor, Creature* creature, Item* item,
 		if(m_scripted == EVENT_SCRIPT_BUFFER)
 		{
 			env->setRealPos(creature->getPosition());
-			std::stringstream scriptstream;
+			std::ostringstream scriptstream;
 			scriptstream << "local cid = " << env->addThing(creature) << std::endl;
 
 			env->streamThing(scriptstream, "item", item, env->addThing(item));
@@ -1213,7 +1213,7 @@ uint32_t MoveEvent::executeStep(Creature* actor, Creature* creature, Item* item,
 		else
 		{
 			#ifdef __DEBUG_LUASCRIPTS__
-			std::stringstream desc;
+			std::ostringstream desc;
 			desc << creature->getName() << " itemid: " << item->getID() << " - " << pos;
 			env->setEvent(desc.str());
 			#endif
@@ -1264,7 +1264,7 @@ bool MoveEvent::executeEquip(Player* player, Item* item, slots_t slot, bool bool
 		if(m_scripted == EVENT_SCRIPT_BUFFER)
 		{
 			env->setRealPos(player->getPosition());
-			std::stringstream scriptstream;
+			std::ostringstream scriptstream;
 
 			scriptstream << "local cid = " << env->addThing(player) << std::endl;
 			env->streamThing(scriptstream, "item", item, env->addThing(item));
@@ -1287,7 +1287,7 @@ bool MoveEvent::executeEquip(Player* player, Item* item, slots_t slot, bool bool
 		else
 		{
 			#ifdef __DEBUG_LUASCRIPTS__
-			std::stringstream desc;
+			std::ostringstream desc;
 			desc << player->getName() << " itemid: " << item->getID() << " slot: " << slot;
 			env->setEvent(desc.str());
 			#endif
@@ -1334,7 +1334,7 @@ uint32_t MoveEvent::executeAddRemItem(Creature* actor, Item* item, Item* tileIte
 		if(m_scripted == EVENT_SCRIPT_BUFFER)
 		{
 			env->setRealPos(pos);
-			std::stringstream scriptstream;
+			std::ostringstream scriptstream;
 
 			env->streamThing(scriptstream, "moveItem", item, env->addThing(item));
 			env->streamThing(scriptstream, "tileItem", tileItem, env->addThing(tileItem));
@@ -1358,7 +1358,7 @@ uint32_t MoveEvent::executeAddRemItem(Creature* actor, Item* item, Item* tileIte
 		else
 		{
 			#ifdef __DEBUG_LUASCRIPTS__
-			std::stringstream desc;
+			std::ostringstream desc;
 			if(tileItem)
 				desc << "tileid: " << tileItem->getID();
 

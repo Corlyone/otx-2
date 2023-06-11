@@ -100,7 +100,6 @@ class TalkAction : public Event
 		virtual std::string getScriptEventName() const {return "onSay";}
 		virtual std::string getScriptEventParams() const {return "cid, words, param, channel";}
 
-		static TalkFunction autoLoot;
 		static TalkFunction houseBuy;
 		static TalkFunction houseSell;
 		static TalkFunction houseKick;

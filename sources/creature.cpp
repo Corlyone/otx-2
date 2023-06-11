@@ -32,6 +32,10 @@
 #include "configmanager.h"
 #include "game.h"
 
+boost::recursive_mutex AutoId::lock;
+uint32_t AutoId::count = 1000;
+AutoId::List AutoId::list;
+
 extern Game g_game;
 extern ConfigManager g_config;
 extern CreatureEvents* g_creatureEvents;
@@ -82,7 +86,6 @@ Creature::Creature()
 	walkUpdateTicks = 0;
 	checkVector = -1;
 	lastFailedFollow = 0;
-	scriptEventsBitField = 0;
 
 	onIdleStatus();
 }
@@ -271,7 +274,7 @@ void Creature::onWalk()
 		cancelNextWalk = false;
 		listWalkDir.clear();
 		onWalkAborted();
- 	}
+	}
 
 	if(eventWalk)
 	{
@@ -539,8 +542,10 @@ void Creature::onCreatureMove(const Creature* creature, const Tile* newTile, con
 		lastStepCost = 1;
 		if(!teleport)
 		{
-			if(std::abs(newPos.x - oldPos.x) >= 1 && std::abs(newPos.y - oldPos.y) >= 1)
+			if(oldPos.z != newPos.z)
 				lastStepCost = 2;
+			else if(std::abs(newPos.x - oldPos.x) >= 1 && std::abs(newPos.y - oldPos.y) >= 1)
+				lastStepCost = 3;
 		}
 		else
 			stopEventWalk();
@@ -667,8 +672,9 @@ void Creature::onCreatureMove(const Creature* creature, const Tile* newTile, con
 	{
 		if(hasFollowPath)
 		{
-			isUpdatingPath = false;
-			Dispatcher::getInstance().addTask(createTask(boost::bind(&Game::updateCreatureWalk, &g_game, getID())));
+			isUpdatingPath = true;
+			Dispatcher::getInstance().addTask(createTask(
+				boost::bind(&Game::updateCreatureWalk, &g_game, getID())));
 		}
 
 		if(newPos.z != oldPos.z || !canSee(followCreature->getPosition()))
@@ -1046,6 +1052,10 @@ bool Creature::setAttackedCreature(Creature* creature)
 	for(std::list<Creature*>::iterator cit = summons.begin(); cit != summons.end(); ++cit)
 		(*cit)->setAttackedCreature(creature);
 
+	Condition* condition = getCondition(CONDITION_LOGINPROTECTION, CONDITIONID_DEFAULT);
+	if(condition)
+		removeCondition(condition);
+
 	return true;
 }
 
@@ -1061,7 +1071,7 @@ void Creature::goToFollowCreature()
 {
 	if(getPlayer() && (OTSYS_TIME() - lastFailedFollow <= g_config.getNumber(ConfigManager::FOLLOW_EXHAUST)))
 		return;
-	
+
 	if(followCreature)
 	{
 		FindPathParams fpp;
@@ -1111,7 +1121,7 @@ bool Creature::setFollowCreature(Creature* creature, bool /*fullPathSearch = fal
 		followCreature = NULL;
 	}
 
-	// g_game.updateCreatureWalk(id);
+	//g_game.updateCreatureWalk(id);
 	onFollowCreature(creature);
 	return true;
 }
@@ -1209,13 +1219,13 @@ void Creature::onAddCondition(ConditionType_t type, bool hadCondition)
 	}
 }
 
-void Creature::onEndCondition(ConditionType_t type)
+void Creature::onEndCondition(ConditionType_t type, ConditionId_t)
 {
 	if(type == CONDITION_INVISIBLE && !hasCondition(CONDITION_INVISIBLE, -1, false))
 		g_game.internalCreatureChangeVisible(this, VISIBLE_APPEAR);
 }
 
-void Creature::onTickCondition(ConditionType_t type, int32_t, bool& _remove)
+void Creature::onTickCondition(ConditionType_t type, ConditionId_t, int32_t, bool& _remove)
 {
 	if(const MagicField* field = getTile()->getFieldItem())
 	{
@@ -1353,12 +1363,12 @@ void Creature::onGainExperience(double& gainExp, Creature* target, bool multipli
 	g_game.getSpectators(list, targetPos, false, true, Map::maxViewportX, Map::maxViewportX,
 		Map::maxViewportY, Map::maxViewportY);
 
-	std::stringstream ss;
+	std::ostringstream ss;
 	ss << ucfirst(getNameDescription()) << " gained " << (uint64_t)gainExp << " experience points.";
 
 	SpectatorVec textList;
 	for (Creature* spectator : list) {
-		if(spectator != this)
+		if (spectator != this)
 			textList.insert(spectator);
 	}
 
@@ -1397,12 +1407,12 @@ void Creature::onGainSharedExperience(double& gainExp, Creature* target, bool mu
 	g_game.getSpectators(list, targetPos, false, true, Map::maxViewportX, Map::maxViewportX,
 		Map::maxViewportY, Map::maxViewportY);
 
-	std::stringstream ss;
+	std::ostringstream ss;
 	ss << ucfirst(getNameDescription()) << " gained " << (uint64_t)gainExp << " experience points.";
 
 	SpectatorVec textList;
 	for (Creature* spectator : list) {
-		if(spectator != this)
+		if (spectator != this)
 			textList.insert(spectator);
 	}
 
@@ -1503,16 +1513,16 @@ void Creature::removeCondition(ConditionType_t type)
 		it = conditions.erase(it);
 
 		condition->endCondition(this, CONDITIONEND_ABORT);
-		onEndCondition(condition->getType());
+		onEndCondition(condition->getType(), condition->getId());
 		delete condition;
 	}
 }
 
-void Creature::removeCondition(ConditionType_t type, ConditionId_t id)
+void Creature::removeCondition(ConditionType_t type, ConditionId_t conditionId)
 {
 	for(ConditionList::iterator it = conditions.begin(); it != conditions.end(); )
 	{
-		if((*it)->getType() != type || (*it)->getId() != id)
+		if((*it)->getType() != type || (*it)->getId() != conditionId)
 		{
 			++it;
 			continue;
@@ -1522,7 +1532,7 @@ void Creature::removeCondition(ConditionType_t type, ConditionId_t id)
 		it = conditions.erase(it);
 
 		condition->endCondition(this, CONDITIONEND_ABORT);
-		onEndCondition(condition->getType());
+		onEndCondition(condition->getType(), condition->getId());
 		delete condition;
 	}
 }
@@ -1536,7 +1546,7 @@ void Creature::removeCondition(Condition* condition)
 		it = conditions.erase(it);
 
 		condition->endCondition(this, CONDITIONEND_ABORT);
-		onEndCondition(condition->getType());
+		onEndCondition(condition->getType(), condition->getId());
 		delete condition;
 	}
 }
@@ -1565,16 +1575,16 @@ void Creature::removeConditions(ConditionEnd_t reason, bool onlyPersistent/* = t
 		it = conditions.erase(it);
 
 		condition->endCondition(this, reason);
-		onEndCondition(condition->getType());
+		onEndCondition(condition->getType(), condition->getId());
 		delete condition;
 	}
 }
 
-Condition* Creature::getCondition(ConditionType_t type, ConditionId_t id, uint32_t subId/* = 0*/) const
+Condition* Creature::getCondition(ConditionType_t type, ConditionId_t conditionId, uint32_t subId/* = 0*/) const
 {
 	for(ConditionList::const_iterator it = conditions.begin(); it != conditions.end(); ++it)
 	{
-		if((*it)->getType() == type && (*it)->getId() == id && (*it)->getSubId() == subId)
+		if((*it)->getType() == type && (*it)->getId() == conditionId && (*it)->getSubId() == subId)
 			return *it;
 	}
 
@@ -1595,7 +1605,7 @@ void Creature::executeConditions(uint32_t interval)
 		it = conditions.erase(it);
 
 		condition->endCondition(this, CONDITIONEND_TICKS);
-		onEndCondition(condition->getType());
+		onEndCondition(condition->getType(), condition->getId());
 		delete condition;
 	}
 }
@@ -1639,7 +1649,7 @@ std::string Creature::getDescription(int32_t) const
 	return "a creature";
 }
 
-int32_t Creature::getStepDuration(Direction dir) const
+int64_t Creature::getStepDuration(Direction dir) const
 {
 	if(dir == NORTHWEST || dir == NORTHEAST || dir == SOUTHWEST || dir == SOUTHEAST)
 		return getStepDuration() << 1;
@@ -1647,7 +1657,7 @@ int32_t Creature::getStepDuration(Direction dir) const
 	return getStepDuration();
 }
 
-int32_t Creature::getStepDuration() const
+int64_t Creature::getStepDuration() const
 {
 	if(removed)
 		return 0;
@@ -1697,8 +1707,6 @@ bool Creature::registerCreatureEvent(const std::string& name)
 			return false;
 	}
 
-	scriptEventsBitField |= static_cast<uint64_t>(1) << event->getEventType();
-
 	eventsList.push_back(event);
 	return true;
 }
@@ -1709,33 +1717,16 @@ bool Creature::unregisterCreatureEvent(const std::string& name)
 	if(!event || !event->isLoaded()) //check for existance
 		return false;
 
-	CreatureEventType_t type = event->getEventType();
-	if (!hasEventRegistered(type)) {
-		return false;
-	}
-
-	bool resetTypeBit = true;
-	bool removed = false;
-
-	auto it = eventsList.begin(), end = eventsList.end();
-	while (it != end) {
-		CreatureEvent* curEvent = *it;
-		if (curEvent == event) {
-			it = eventsList.erase(it);
-			removed = true;
+	for(CreatureEventList::iterator it = eventsList.begin(); it != eventsList.end(); ++it)
+	{
+		if((*it) != event)
 			continue;
-		}
 
-		if (curEvent->getEventType() == type) {
-			resetTypeBit = false;
-		}
-		++it;
+		eventsList.erase(it);
+		return true; // we shouldn't have a duplicate
 	}
 
-	if (resetTypeBit) {
-		scriptEventsBitField &= ~(static_cast<uint64_t>(1) << type);
-	}
-	return removed;
+	return false;
 }
 
 void Creature::unregisterCreatureEvent(CreatureEventType_t type)
@@ -1745,19 +1736,17 @@ void Creature::unregisterCreatureEvent(CreatureEventType_t type)
 		if((*it)->getEventType() == type)
 			it = eventsList.erase(it);
 	}
-	scriptEventsBitField &= ~(static_cast<uint64_t>(1) << type);
 }
 
 CreatureEventList Creature::getCreatureEvents(CreatureEventType_t type)
 {
 	CreatureEventList list;
-	if (hasEventRegistered(type)) {
-		for(CreatureEventList::iterator it = eventsList.begin(); it != eventsList.end(); ++it)
-		{
-			if((*it)->getEventType() == type && (*it)->isLoaded())
-				list.push_back(*it);
-		}
+	for(CreatureEventList::iterator it = eventsList.begin(); it != eventsList.end(); ++it)
+	{
+		if((*it)->getEventType() == type && (*it)->isLoaded())
+			list.push_back(*it);
 	}
+
 	return list;
 }
 
@@ -1769,59 +1758,84 @@ FrozenPathingConditionCall::FrozenPathingConditionCall(const Position& _targetPo
 bool FrozenPathingConditionCall::isInRange(const Position& startPos, const Position& testPos,
 	const FindPathParams& fpp) const
 {
-	int32_t dxMin = ((fpp.fullPathSearch || (startPos.x - targetPos.x) <= 0) ? fpp.maxTargetDist : 0);
-	if(testPos.x < targetPos.x - dxMin) {
-		return false;
-	}
+	if (fpp.fullPathSearch) {
+		if (testPos.x > targetPos.x + fpp.maxTargetDist) {
+			return false;
+		}
 
-	int32_t dxMax = ((fpp.fullPathSearch || (startPos.x - targetPos.x) >= 0) ? fpp.maxTargetDist : 0);
-	if(testPos.x > targetPos.x + dxMax) {
-		return false;
-	}
+		if (testPos.x < targetPos.x - fpp.maxTargetDist) {
+			return false;
+		}
 
-	int32_t dyMin = ((fpp.fullPathSearch || (startPos.y - targetPos.y) <= 0) ? fpp.maxTargetDist : 0);
-	if(testPos.y < targetPos.y - dyMin) {
-		return false;
-	}
+		if (testPos.y > targetPos.y + fpp.maxTargetDist) {
+			return false;
+		}
 
-	int32_t dyMax = ((fpp.fullPathSearch || (startPos.y - targetPos.y) >= 0) ? fpp.maxTargetDist : 0);
-	if(testPos.y > targetPos.y + dyMax) {
-		return false;
+		if (testPos.y < targetPos.y - fpp.maxTargetDist) {
+			return false;
+		}
 	}
+	else {
+		int_fast32_t dx = Position::getOffsetX(startPos, targetPos);
 
+		int32_t dxMax = (dx >= 0 ? fpp.maxTargetDist : 0);
+		if (testPos.x > targetPos.x + dxMax) {
+			return false;
+		}
+
+		int32_t dxMin = (dx <= 0 ? fpp.maxTargetDist : 0);
+		if (testPos.x < targetPos.x - dxMin) {
+			return false;
+		}
+
+		int_fast32_t dy = Position::getOffsetY(startPos, targetPos);
+
+		int32_t dyMax = (dy >= 0 ? fpp.maxTargetDist : 0);
+		if (testPos.y > targetPos.y + dyMax) {
+			return false;
+		}
+
+		int32_t dyMin = (dy <= 0 ? fpp.maxTargetDist : 0);
+		if (testPos.y < targetPos.y - dyMin) {
+			return false;
+		}
+	}
 	return true;
 }
 
 bool FrozenPathingConditionCall::operator()(const Position& startPos, const Position& testPos,
 	const FindPathParams& fpp, int32_t& bestMatchDist) const
 {
-	if(!isInRange(startPos, testPos, fpp))
+	if (!isInRange(startPos, testPos, fpp)) {
 		return false;
+	}
 
-	if(fpp.clearSight && !g_game.isSightClear(testPos, targetPos, true))
+	if (fpp.clearSight && !g_game.isSightClear(testPos, targetPos, true)) {
 		return false;
+	}
 
-	int32_t testDist = std::max(std::abs(targetPos.x - testPos.x), std::abs(targetPos.y - testPos.y));
-	if(fpp.maxTargetDist == 1)
-		return (testDist >= fpp.minTargetDist && testDist <= fpp.maxTargetDist);
-
-	if(testDist <= fpp.maxTargetDist)
-	{
-		if(testDist < fpp.minTargetDist)
+	int32_t testDist = std::max<int32_t>(Position::getDistanceX(targetPos, testPos), Position::getDistanceY(targetPos, testPos));
+	if (fpp.maxTargetDist == 1) {
+		if (testDist < fpp.minTargetDist || testDist > fpp.maxTargetDist) {
 			return false;
+		}
 
-		if(testDist == fpp.maxTargetDist)
-		{
+		return true;
+	}
+	else if (testDist <= fpp.maxTargetDist) {
+		if (testDist < fpp.minTargetDist) {
+			return false;
+		}
+
+		if (testDist == fpp.maxTargetDist) {
 			bestMatchDist = 0;
 			return true;
 		}
-		else if(testDist > bestMatchDist)
-		{
+		else if (testDist > bestMatchDist) {
 			//not quite what we want, but the best so far
 			bestMatchDist = testDist;
 			return true;
 		}
 	}
-
 	return false;
 }

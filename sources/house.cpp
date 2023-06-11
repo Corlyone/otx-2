@@ -34,7 +34,7 @@ extern Game g_game;
 
 House::House(uint32_t houseId)
 {
-	guild = pendingTransfer = isprotected = false;
+	guild = pendingTransfer = false;
 	name = "OTX headquarter (Flat 1, Area 42)";
 	entry = Position();
 	id = houseId;
@@ -133,7 +133,7 @@ bool House::setOwnerEx(uint32_t guid, bool transfer)
 	lastWarning = guid ? time(NULL) : 0;
 
 	Database* db = Database::getInstance();
-	DBTransaction trans;
+	DBTransaction trans(db);
 	if(!trans.begin())
 		return false;
 
@@ -149,13 +149,14 @@ bool House::isGuild() const
 bool House::isBidded() const
 {
 	Database* db = Database::getInstance();
-	DBResult_ptr result;
+	DBResult* result;
 
-	DBQuery query;
+	std::ostringstream query;
 	query << "SELECT `house_id` FROM `house_auctions` WHERE `house_id` = " << id << " LIMIT 1";
 	if(!(result = db->storeQuery(query.str())))
 		return false;
 
+	result->free();
 	return true;
 }
 
@@ -344,7 +345,7 @@ AccessHouseLevel_t House::getHouseAccessLevel(const Player* player)
 			}
 		}
 	}
-	else if(player->getGUID() == owner/* || player->marriage == owner*/)
+	else if(player->getGUID() == owner || player->marriage == owner)
 		return HOUSE_OWNER;
 
 	if(subOwnerList.isInList(player))
@@ -486,9 +487,6 @@ bool AccessList::parseList(const std::string& _list)
 		trimString(line);
 
 		toLowerCaseString(line);
-		if(line.empty())
-			break;
-		
 		if(line.substr(0, 1) == "#" || line.length() > 100)
 			continue;
 
@@ -956,7 +954,7 @@ bool Houses::payHouse(House* house, time_t _time, uint32_t bid)
 			{
 				letter->setWriter(g_config.getString(ConfigManager::SERVER_NAME));
 				letter->setDate(std::time(NULL));
-				std::stringstream s;
+				std::ostringstream s;
 
 				s << "Warning!\nThe ";
 				switch(rentPeriod)

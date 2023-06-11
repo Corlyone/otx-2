@@ -16,14 +16,13 @@
 ////////////////////////////////////////////////////////////////////////
 #include "otpch.h"
 #include "spectators.h"
+
 #include "player.h"
 #include "chat.h"
 
 #include "database.h"
 #include "tools.h"
 
-#include "game.h"
-extern Game g_game;
 extern Chat g_chat;
 
 bool Spectators::check(const std::string& _password)
@@ -48,9 +47,10 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 	if(text[0] == '/')
 	{
 		StringVec t = explodeString(text.substr(1, text.length()), " ", true, 1);
-		if(strcasecmp(t[0].c_str(), "show") == 0)
+		toLowerCaseString(t[0]);
+		if(t[0] == "show")
 		{
-			std::stringstream s;
+			std::ostringstream s;
 			s << spectators.size() << " spectators. ";
 			for(SpectatorList::const_iterator it = spectators.begin(); it != spectators.end(); ++it)
 			{
@@ -63,7 +63,7 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 			s << ".";
 			client->sendCreatureSay(owner->getPlayer(), MSG_PRIVATE, s.str(), NULL, 0);
 		}
-		else if(strcasecmp(t[0].c_str(), "name") == 0)
+		else if(t[0] == "name")
 		{
 			if(t.size() > 1)
 			{
@@ -75,7 +75,7 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 						bool found = false;
 						for(SpectatorList::iterator iit = spectators.begin(); iit != spectators.end(); ++iit)
 						{
-							if(strcasecmp(iit->second.first.c_str(), t[1].c_str()) != 0)
+							if(asLowerCaseString(iit->second.first) != asLowerCaseString(t[1]))
 								continue;
 
 							found = true;
@@ -107,7 +107,7 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 			else
 				client->sendCreatureSay(owner->getPlayer(), MSG_PRIVATE, "Not enough param(s) given.", NULL, 0);
 		}
-		else if(strcasecmp(t[0].c_str(), "auth") == 0)
+		else if(t[0] == "auth")
 		{
 			if(t.size() > 1)
 			{
@@ -115,15 +115,16 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 				if(_t.size() > 1)
 				{
 					Database* db = Database::getInstance();
-					DBQuery query;
+					std::ostringstream query;
 
 					query << "SELECT `id`, `salt`, `password` FROM `accounts` WHERE `name` " << db->getStringComparer() << db->escapeString(_t[0]) << " LIMIT 1";
-					if(DBResult_ptr result = db->storeQuery(query.str()))
+					if(DBResult* result = db->storeQuery(query.str()))
 					{
 						std::string password = result->getDataString("salt") + _t[1],
 							hash = result->getDataString("password");
 						uint32_t id = result->getDataInt("id");
 
+						result->free();
 						if(encryptTest(password, hash))
 						{
 							query.str("");
@@ -131,6 +132,7 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 							if((result = db->storeQuery(query.str())))
 							{
 								std::string nickname = result->getDataString("name");
+								result->free();
 
 								client->sendCreatureSay(owner->getPlayer(), MSG_PRIVATE, "You have authenticated as " + nickname + ".", NULL, 0);
 								if(channel)
@@ -169,7 +171,7 @@ void Spectators::handle(ProtocolGame* client, const std::string& text, uint16_t 
 		StringVec::const_iterator mit = std::find(mutes.begin(), mutes.end(), asLowerCaseString(sit->second.first));
 		if(mit == mutes.end())
 		{
-			if(channel && channel->getId() == channelId) {
+			if (channel && channel->getId() == channelId) {
 				if ((time(NULL) - client->lastCastMsg) < 10) {
 					client->sendCreatureSay(owner->getPlayer(), MSG_PRIVATE, "You are exhausted.", NULL, 0);
 					return;
@@ -207,7 +209,7 @@ void Spectators::kick(StringVec list)
 	{
 		for(SpectatorList::iterator sit = spectators.begin(); sit != spectators.end(); ++sit)
 		{
-			if(strcasecmp(sit->second.first.c_str(), (*it).c_str()) == 0)
+			if(asLowerCaseString(sit->second.first) == *it)
 				sit->first->disconnect();
 		}
 	}
@@ -229,7 +231,7 @@ void Spectators::ban(StringVec _bans)
 	{
 		for(SpectatorList::const_iterator sit = spectators.begin(); sit != spectators.end(); ++sit)
 		{
-			if(strcasecmp(sit->second.first.c_str(), (*it).c_str()) != 0)
+			if(asLowerCaseString(sit->second.first) != *it)
 				continue;
 
 			bans[*it] = sit->first->getIP();
@@ -243,7 +245,7 @@ void Spectators::addSpectator(ProtocolGame* client)
 	if(++id == 65536)
 		id = 1;
 
-	std::stringstream s;
+	std::ostringstream s;
 	s << "Spectator [" << id << "]";
 
 	spectators[client] = std::make_pair(s.str(), false);

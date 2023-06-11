@@ -66,9 +66,8 @@ class ProtocolGame : public Protocol
 			protocolGameCount++;
 #endif
 			player = NULL;
-			player_old = NULL;
 			eventConnect = m_packetCount = m_packetTime = 0;
-			m_debugAssertSent = acceptPackets = m_spectator = isDll = isV8 = false;
+			m_debugAssertSent = acceptPackets = m_spectator = false;
 		}
 		virtual ~ProtocolGame()
 		{
@@ -78,15 +77,7 @@ class ProtocolGame : public Protocol
 		}
 
 
-		void spectatorLogin(const std::string& name, const std::string& password);
-		bool canWatch(Player* foundPlayer);
-		void sendSpectatorAppear(Player* p);
-		void castNavigation(uint16_t direction);
-		void spectatorLookAt(const Position& pos, uint16_t spriteId, int16_t stackpos);
-		void telescopeGo(std::string playername, uint16_t guid);
-		void telescopeBack(bool lostConnection);
-		void sendCastList();
-
+		void spectate(const std::string& name, const std::string& password);
 		void login(const std::string& name, uint32_t id, const std::string& password,
 			OperatingSystem_t operatingSystem, uint16_t version, bool gamemaster);
 		bool logout(bool displayEffect, bool forceLogout);
@@ -119,7 +110,6 @@ class ProtocolGame : public Protocol
 		virtual void parsePacket(NetworkMessage& msg);
 
 		//Parse methods
-		void parseTelescopeBack(bool lostConnection);
 		void parseLogout(NetworkMessage& msg);
 		void parseCancelWalk(NetworkMessage& msg);
 		void parseCancelTarget(NetworkMessage& msg);
@@ -167,8 +157,6 @@ class ProtocolGame : public Protocol
 		void parsePassPartyLeadership(NetworkMessage& msg);
 		void parseLeaveParty(NetworkMessage& msg);
 		void parseSharePartyExperience(NetworkMessage& msg);
-		
-		void parseToggleMount();
 
 		//trade methods
 		void parseRequestTrade(NetworkMessage& msg);
@@ -212,8 +200,18 @@ class ProtocolGame : public Protocol
 		void sendIcons(int32_t icons);
 		void sendFYIBox(const std::string& message);
 
+#ifdef __EXTENDED_DISTANCE_SHOOT__
+		void sendDistanceShoot(const Position& from, const Position& to, uint16_t type);
+#else
 		void sendDistanceShoot(const Position& from, const Position& to, uint8_t type);
+#endif
+
+#ifdef __EXTENDED_MAGIC_EFFECTS__
+		void sendMagicEffect(const Position& pos, uint16_t type);
+#else
 		void sendMagicEffect(const Position& pos, uint8_t type);
+#endif
+
 		void sendAnimatedText(const Position& pos, uint8_t color, std::string text);
 		void sendCreatureHealth(const Creature* creature);
 		void sendSkills();
@@ -309,12 +307,23 @@ class ProtocolGame : public Protocol
 			Position* pos = NULL, MessageDetails* details = NULL);
 		void AddAnimatedText(OutputMessage_ptr msg, const Position& pos,
 			uint8_t color, const std::string& text);
+
+#ifdef __EXTENDED_MAGIC_EFFECTS__
+		void AddMagicEffect(OutputMessage_ptr msg, const Position& pos, uint16_t type);
+#else
 		void AddMagicEffect(OutputMessage_ptr msg, const Position& pos, uint8_t type);
+#endif
+
+#ifdef __EXTENDED_DISTANCE_SHOOT__
+		void AddDistanceShoot(OutputMessage_ptr msg, const Position& from, const Position& to, uint16_t type);
+#else
 		void AddDistanceShoot(OutputMessage_ptr msg, const Position& from, const Position& to, uint8_t type);
+#endif
+
 		void AddCreature(OutputMessage_ptr msg, const Creature* creature, bool known, uint32_t remove);
 		void AddPlayerStats(OutputMessage_ptr msg);
 		void AddCreatureSpeak(OutputMessage_ptr msg, const Creature* creature, MessageClasses type,
-			std::string text, uint16_t channelId, Position* pos, uint32_t statementId);
+			const std::string& text, const uint16_t& channelId, Position* pos, const uint32_t& statementId);
 		void AddCreatureHealth(OutputMessage_ptr msg, const Creature* creature);
 		void AddCreatureOutfit(OutputMessage_ptr msg, const Creature* creature, const Outfit_t& outfit, bool outfitWindow = false);
 		void AddPlayerSkills(OutputMessage_ptr msg);
@@ -345,9 +354,6 @@ class ProtocolGame : public Protocol
 		//shop
 		void AddShopItem(OutputMessage_ptr msg, const ShopInfo& item);
 
-		void sendNewPing(uint32_t pingId);
-		void parseNewPing(NetworkMessage& msg);
-
 		void parseExtendedOpcode(NetworkMessage& msg);
 		void sendExtendedOpcode(uint8_t opcode, const std::string& buffer);
 
@@ -359,17 +365,8 @@ class ProtocolGame : public Protocol
 		friend class Player;
 		friend class Spectators;
 		Player* player;
-		Player* player_old;
 
-		time_t m_lastSwitch;
 		uint32_t eventConnect, m_maxSizeCount, m_packetCount, m_packetTime;
-		bool m_debugAssertSent, acceptPackets, m_spectator, isDll, isV8;
-		
-		int64_t m_lastCastTime = 0;
-		int64_t m_time = 0;
-		uint32_t m_count = 0;
-
-		std::string twatchername = "";
-		bool castlistopen = false;
+		bool m_debugAssertSent, acceptPackets, m_spectator;
 };
 #endif

@@ -113,6 +113,7 @@ enum AttrTypes_t
 	ATTR_ARTICLE = 41,
 	ATTR_SCRIPTPROTECTED = 42,
 	ATTR_DUALWIELD = 43,
+	ATTR_CRITICALHITCHANCE = 44,
 	ATTR_ATTRIBUTE_MAP = 128
 };
 
@@ -154,8 +155,6 @@ class Item : virtual public Thing, public ItemAttributes
 
 		virtual Item* clone() const;
 		virtual void copyAttributes(Item* item);
-		void generateSerial();
-		virtual void copyAllAttributes(Item* item);
 		void makeUnique(Item* parent);
 
 		virtual Item* getItem() {return this;}
@@ -185,11 +184,11 @@ class Item : virtual public Thing, public ItemAttributes
 		uint16_t getID() const {return id;}
 		void setID(uint16_t newid);
 		uint16_t getClientID() const {return items[id].clientId;}
-		uint16_t getReplaceID() const {return items[id].replaceId;}
 
 		static std::string getDescription(const ItemType& it, int32_t lookDistance, const Item* item = NULL, int32_t subType = -1, bool addArticle = true);
 		static std::string getNameDescription(const ItemType& it, const Item* item = NULL, int32_t subType = -1, bool addArticle = true);
 		static std::string getWeightDescription(double weight, bool stackable, uint32_t count = 1);
+		void generateSerial();
 
 		virtual std::string getDescription(int32_t lookDistance) const {return getDescription(items[id], lookDistance, this);}
 		std::string getNameDescription() const {return getNameDescription(items[id], this);}
@@ -205,7 +204,7 @@ class Item : virtual public Thing, public ItemAttributes
 		virtual bool unserializeItemNode(FileLoader&, NODE, PropStream& propStream) {return unserializeAttr(propStream);}
 
 		// Item attributes
-		void setDuration(int32_t time) {duration=time;}
+		void setDuration(int32_t time) { duration = time; }
 		void decreaseDuration(int32_t time);
 		int32_t getDuration() const;
 
@@ -257,6 +256,7 @@ class Item : virtual public Thing, public ItemAttributes
 		bool isDualWield() const;
 
 		int32_t getAttack() const;
+		int32_t getCriticalHitChance() const;
 		int32_t getExtraAttack() const;
 		int32_t getDefense() const;
 		int32_t getExtraDefense() const;
@@ -351,8 +351,9 @@ class Item : virtual public Thing, public ItemAttributes
 	protected:
 		uint16_t id;
 		uint8_t count;
-
+		int32_t itemUid;
 		int32_t duration;
+
 		Raid* raid;
 		bool loadedFromMap;
 };
@@ -395,6 +396,16 @@ inline bool Item::isScriptProtected() const
 		return v;
 
 	return false;
+}
+
+inline int32_t Item::getCriticalHitChance() const
+{
+	bool ok;
+	int32_t v = getIntegerAttribute("criticalhitchance", ok);
+	if(ok)
+		return v;
+
+	return items[id].criticalHitChance;
 }
 
 inline int32_t Item::getAttack() const

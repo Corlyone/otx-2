@@ -39,6 +39,7 @@ extern "C"
 }
 #endif
 
+
 #include "database.h"
 #include "position.h"
 
@@ -141,8 +142,8 @@ class ScriptEnviroment
 		static void removeTempItem(ScriptEnviroment* env, Item* item);
 		static void removeTempItem(Item* item);
 
-		DBResult_ptr getResultByID(uint32_t id);
-		uint32_t addResult(DBResult_ptr res);
+		DBResult* getResultByID(uint32_t id);
+		uint32_t addResult(DBResult* res);
 		bool removeResult(uint32_t id);
 
 		static void addUniqueThing(Thing* thing);
@@ -160,12 +161,12 @@ class ScriptEnviroment
 		void reset();
 		void resetCallback() {m_callbackId = 0;}
 
-		void streamVariant(std::stringstream& stream, const std::string& local, const LuaVariant& var);
-		void streamThing(std::stringstream& stream, const std::string& local, Thing* thing, uint32_t id = 0);
-		void streamPosition(std::stringstream& stream, const std::string& local, const PositionEx& position)
+		void streamVariant(std::ostringstream& stream, const std::string& local, const LuaVariant& var);
+		void streamThing(std::ostringstream& stream, const std::string& local, Thing* thing, uint32_t id = 0);
+		void streamPosition(std::ostringstream& stream, const std::string& local, const PositionEx& position)
 			{streamPosition(stream, local, position, position.stackpos);}
-		void streamPosition(std::stringstream& stream, const std::string& local, const Position& position, uint32_t stackpos);
-		void streamOutfit(std::stringstream& stream, const std::string& local, const Outfit_t& outfit);
+		void streamPosition(std::ostringstream& stream, const std::string& local, const Position& position, uint32_t stackpos);
+		void streamOutfit(std::ostringstream& stream, const std::string& local, const Outfit_t& outfit);
 
 	private:
 		typedef std::map<uint64_t, Thing*> ThingMap;
@@ -176,7 +177,7 @@ class ScriptEnviroment
 		typedef std::map<uint32_t, CombatArea*> AreaMap;
 		typedef std::map<uint32_t, Combat*> CombatMap;
 		typedef std::map<uint32_t, Condition*> ConditionMap;
-		typedef std::map<uint32_t, DBResult_ptr> DBResultMap;
+		typedef std::map<uint32_t, DBResult*> DBResultMap;
 
 		LuaInterface* m_interface;
 		int32_t m_scriptId, m_callbackId;
@@ -330,25 +331,12 @@ class LuaInterface
 	protected:
 		virtual bool closeState();
 
-		//Ping
-		static int32_t luaDoPlayerSendPing(lua_State* L);
-		static int32_t luaGetPlayerLastPing(lua_State* L);
-		static int32_t luaGetPlayerLastPong(lua_State* L);
-		static int32_t luaGetOtsysTime(lua_State* L);
-		static int32_t luaDoPlayerOpenCustomDialog(lua_State* L);
-		static int32_t luaDoPlayerOpenPrivateChannel(lua_State* L);
-		static int32_t luaIsHouseProtected(lua_State* L);
-		static int32_t luaDoPlayerSpectate(lua_State* L);
-		static int32_t luaSetHouseProtection(lua_State* L);
-		static int32_t luaDoStartTrade(lua_State* L);
-
 		static std::string getError(ErrorCode_t code);
 		static bool getArea(lua_State* L, std::list<uint32_t>& list, uint32_t& rows);
 
 		virtual void registerFunctions();
 
 		//lua functions
-		static int32_t luaIsDll(lua_State* L);
 		static int32_t luaDoRemoveItem(lua_State* L);
 		static int32_t luaDoPlayerFeed(lua_State* L);
 		static int32_t luaDoPlayerSendCancel(lua_State* L);
@@ -366,7 +354,6 @@ class LuaInterface
 		static int32_t luaDoShowTextDialog(lua_State* L);
 		static int32_t luaDoDecayItem(lua_State* L);
 		static int32_t luaDoCreateItem(lua_State* L);
-		static int32_t luaDoCloneItemEx(lua_State* L);
 		static int32_t luaDoCreateItemEx(lua_State* L);
 		static int32_t luaDoCreateTeleport(lua_State* L);
 		static int32_t luaDoCreateMonster(lua_State* L);
@@ -410,6 +397,7 @@ class LuaInterface
 		static int32_t luaDoPlayerSetVocation(lua_State* L);
 		static int32_t luaDoPlayerRemoveItem(lua_State* L);
 		static int32_t luaDoPlayerAddSoul(lua_State* L);
+		static int32_t luaDoPlayerSetExtraAttackSpeed(lua_State* L);
 		static int32_t luaDoPlayerSetStamina(lua_State* L);
 		static int32_t luaDoPlayerAddExperience(lua_State* L);
 		static int32_t luaDoPlayerSetGuildId(lua_State* L);
@@ -433,10 +421,10 @@ class LuaInterface
 		static int32_t luaDoPlayerSetSkullEnd(lua_State* L);
 		static int32_t luaDoPlayerSwitchSaving(lua_State* L);
 		static int32_t luaDoPlayerSave(lua_State* L);
+		static int32_t luaDoPlayerSaveItems(lua_State* L);
 		static int32_t luaDoPlayerSendOutfitWindow(lua_State* L);
 		static int32_t luaDoCreatureExecuteTalkAction(lua_State* L);
 		static int32_t luaGetCreatureByName(lua_State* L);
-		static int32_t luaGetPlayerByName(lua_State* L);
 		static int32_t luaGetPlayerByGUID(lua_State* L);
 		static int32_t luaGetPlayerByNameWildcard(lua_State* L);
 		static int32_t luaGetPlayerGUIDByName(lua_State* L);
@@ -462,6 +450,8 @@ class LuaInterface
 		static int32_t luaDoRemoveIpBanishment(lua_State* L);
 		static int32_t luaDoRemovePlayerBanishment(lua_State* L);
 		static int32_t luaDoRemoveAccountBanishment(lua_State* L);
+		static int32_t luaDoAddAccountWarnings(lua_State* L);
+		static int32_t luaGetAccountWarnings(lua_State* L);
 		static int32_t luaDoRemoveNotations(lua_State* L);
 		static int32_t luaDoRemoveStatements(lua_State* L);
 		static int32_t luaGetNotationsCount(lua_State* L);
@@ -549,8 +539,6 @@ class LuaInterface
 		static int32_t luaGetPlayerGUID(lua_State* L);
 		static int32_t luaGetPlayerOperatingSystem(lua_State* L);
 		static int32_t luaGetPlayerClientVersion(lua_State* L);
-		static int32_t luaGetPlayerFPS(lua_State* L);
-		static int32_t luaGetPlayerLocalPing(lua_State* L);
 		static int32_t luaGetPlayerFlagValue(lua_State* L);
 		static int32_t luaGetPlayerCustomFlagValue(lua_State* L);
 		static int32_t luaHasCreatureCondition(lua_State* L);
@@ -693,11 +681,7 @@ class LuaInterface
 		static int32_t luaGetItemInfo(lua_State* L);
 		static int32_t luaGetItemWeight(lua_State* L);
 		static int32_t luaGetItemParent(lua_State* L);
-		static int32_t luaGetItemDuration(lua_State* L);
 		static int32_t luaGetItemAttribute(lua_State* L);
-		static int32_t luaGetItemAttack(lua_State* L);
-		static int32_t luaGetItemDefense(lua_State* L);
-		static int32_t luaGetItemArmor(lua_State* L);		
 		static int32_t luaDoItemSetAttribute(lua_State* L);
 		static int32_t luaDoItemEraseAttribute(lua_State* L);
 		static int32_t luaGetVocationList(lua_State* L);
@@ -766,10 +750,7 @@ class LuaInterface
 		static int32_t luaStdCout(lua_State* L);
 		static int32_t luaStdClog(lua_State* L);
 		static int32_t luaStdCerr(lua_State* L);
-		static int32_t luaStdMD5(lua_State* L);
 		static int32_t luaStdSHA1(lua_State* L);
-		static int32_t luaStdSHA256(lua_State* L);
-		static int32_t luaStdSHA512(lua_State* L);
 		static int32_t luaStdCheckName(lua_State* L);
 
 		lua_State* m_luaState;
@@ -822,9 +803,7 @@ class LuaInterface
 			PlayerInfoAccountManager,
 			PlayerInfoTradeState,
 			PlayerInfoOperatingSystem,
-			PlayerInfoClientVersion,
-			PlayerInfoLocalPing,
-			PlayerInfoFPS
+			PlayerInfoClientVersion
 		};
 		static int32_t internalGetPlayerInfo(lua_State* L, PlayerInfo_t info);
 

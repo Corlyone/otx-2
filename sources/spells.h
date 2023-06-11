@@ -67,6 +67,7 @@ class Spells : public BaseEvents
 
 		RunesMap runes;
 		InstantsMap instants;
+		InstantsMap instantsWithParam;
 
 		uint32_t spellId;
 		friend class CombatSpell;
@@ -162,8 +163,8 @@ class Spell : public BaseSpell
 		bool learnable;
 		bool enabled;
 
-		int32_t mana;
 		std::string exhaustedGroup;
+		int32_t mana;
 		int32_t manaPercent;
 		int32_t soul;
 		int32_t range;

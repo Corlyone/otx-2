@@ -27,7 +27,6 @@
 #include "depot.h"
 
 #include "outfit.h"
-#include "mounts.h"
 #include "vocation.h"
 #include "group.h"
 
@@ -124,7 +123,7 @@ typedef std::list<uint32_t> InvitationsList;
 typedef std::list<Party*> PartyList;
 typedef std::map<uint32_t, War_t> WarMap;
 
-#define SPEED_MAX 850
+#define SPEED_MAX 1500
 #define SPEED_MIN 10
 #define STAMINA_MAX (42 * 60 * 60 * 1000)
 #define STAMINA_MULTIPLIER (60 * 1000)
@@ -142,7 +141,12 @@ class Player : public Creature, public Cylinder
 		virtual const Player* getPlayer() const {return this;}
 		virtual CreatureType_t getType() const {return CREATURETYPE_PLAYER;}
 
-		ProtocolGame_ptr p_protocol;
+		void setID() override
+		{
+			if(id == 0) {
+				id = playerAutoID++;
+			}
+		}
 
 		static MuteCountMap muteCountMap;
 
@@ -160,13 +164,8 @@ class Player : public Creature, public Cylinder
 		void setGUID(uint32_t _guid) {guid = _guid;}
 		uint32_t getGUID() const {return guid;}
 
-		void setID() final {
-			if (id == 0) {
-				id = playerAutoID++;
-			}
-		}
-
 		static AutoList<Player> autoList;
+		virtual uint32_t rangeId() {return PLAYER_ID_RANGE;}
 		static bool sort(Player* lhs, Player* rhs) {return lhs->getName() < rhs->getName();}
 
 		void addList();
@@ -187,9 +186,6 @@ class Player : public Creature, public Cylinder
 		}
 
 		bool addOfflineTrainingTries(skills_t skill, int32_t tries);
-
-		void setSpectating(bool value) { is_spectating = value; };
-		bool isSpectating() { return is_spectating; };
 
 		void addOfflineTrainingTime(int32_t addTime) {offlineTrainingTime = std::min(12 * 3600 * 1000, offlineTrainingTime + addTime);}
 		void removeOfflineTrainingTime(int32_t removeTime) {offlineTrainingTime = std::max(0, offlineTrainingTime - removeTime);}
@@ -300,6 +296,9 @@ class Player : public Creature, public Cylinder
 		uint32_t getMagicLevel() const {return getPlayerInfo(PLAYERINFO_MAGICLEVEL);}
 		uint32_t getBaseMagicLevel() const {return magLevel;}
 		uint64_t getSpentMana() const {return manaSpent;}
+
+		uint32_t getExtraAttackSpeed() const {return extraAttackSpeed;}
+		void setPlayerExtraAttackSpeed(uint32_t speed);
 
 		bool isPremium() const;
 		int32_t getPremiumDays() const {return premiumDays;}
@@ -496,6 +495,7 @@ class Player : public Creature, public Cylinder
 		bool addUnjustifiedKill(const Player* attacked, bool countNow);
 
 		virtual int32_t getArmor() const;
+		virtual int32_t getCriticalHitChance() const;
 		virtual int32_t getDefense() const;
 		virtual float getAttackFactor() const;
 		virtual float getDefenseFactor() const;
@@ -508,9 +508,9 @@ class Player : public Creature, public Cylinder
 		//combat event functions
 		virtual void onAddCondition(ConditionType_t type, bool hadCondition);
 		virtual void onAddCombatCondition(ConditionType_t type, bool hadCondition);
-		virtual void onEndCondition(ConditionType_t type);
+		virtual void onEndCondition(ConditionType_t type, ConditionId_t id);
 		virtual void onCombatRemoveCondition(const Creature* attacker, Condition* condition);
-		virtual void onTickCondition(ConditionType_t type, int32_t interval, bool& _remove);
+		virtual void onTickCondition(ConditionType_t type, ConditionId_t id, int32_t interval, bool& _remove);
 		virtual void onTarget(Creature* target);
 		virtual void onSummonTarget(Creature* summon, Creature* target);
 		virtual void onAttacked();
@@ -661,8 +661,15 @@ class Player : public Creature, public Cylinder
 			{if(client) client->sendChangeSpeed(creature, newSpeed);}
 		void sendCreatureHealth(const Creature* creature) const
 			{if(client) client->sendCreatureHealth(creature);}
-		void sendDistanceShoot(const Position& from, const Position& to, uint8_t type) const
+
+#ifdef __EXTENDED_DISTANCE_SHOOT__
+		void sendDistanceShoot(const Position& from, const Position& to, uint16_t type) const
 			{if(client) client->sendDistanceShoot(from, to, type);}
+#else
+		void sendDistanceShoot(const Position& from, const Position& to, uint8_t type) const
+		{if(client) client->sendDistanceShoot(from, to, type);}
+#endif
+
 		void sendHouseWindow(House* house, uint32_t listId) const;
 		void sendOutfitWindow() const {if(client) client->sendOutfitWindow();}
 		void sendQuests() const {if(client) client->sendQuests();}
@@ -676,8 +683,15 @@ class Player : public Creature, public Cylinder
 		void sendClosePrivate(uint16_t channelId) const
 			{if(client) client->sendClosePrivate(channelId);}
 		void sendIcons() const;
+
+#ifdef __EXTENDED_MAGIC_EFFECTS__
+		void sendMagicEffect(const Position& pos, uint16_t type) const
+			{if(client) client->sendMagicEffect(pos, type);}
+#else
 		void sendMagicEffect(const Position& pos, uint8_t type) const
 			{if(client) client->sendMagicEffect(pos, type);}
+#endif
+
 		void sendAnimatedText(const Position& pos, uint8_t color, const std::string& text) const
 			{if(client) client->sendAnimatedText(pos, color, text);}
 		void sendSkills() const
@@ -729,24 +743,6 @@ class Player : public Creature, public Cylinder
 		void sendPlayerIcons(Player* player);
 		void sendStats();
 
-
-		void setFPS(uint16_t value)
-		{
-			fps = value;
-		}
-		void setLocalPing(uint16_t value)
-		{
-			localPing = value;
-		}
-		uint16_t getFPS() const
-		{
-			return fps;
-		}
-		uint16_t getLocalPing() const
-		{
-			return localPing;
-		}
-
 		void receivePing() {lastPong = OTSYS_TIME();}
 		virtual void onThink(uint32_t interval);
 		uint32_t getAttackSpeed() const;
@@ -784,49 +780,12 @@ class Player : public Creature, public Cylinder
 		DepotMap depots;
 		Container transferContainer;
 
-		//Autoloot FeeTads
-		std::list<uint16_t> getAutoLoot() {
-			return AutoLoot;
-		}
-		void clearAutoLoot();
-		void addAutoLoot(uint16_t id);
-		void removeAutoLoot(uint16_t id);
-		bool limitAutoLoot();
-		bool checkAutoLoot(uint16_t id);
-		bool isMoneyAutoLoot(Item* item, uint32_t& count);
-		std::string statusAutoLoot() {
-			return (autoLootStatus ? "On" : "Off");
-		}
-		void updateStatusAutoLoot(bool status){
-			autoLootStatus = status;
-		}
-		std::string statusAutoMoneyCollect() {
-			return (autoMoneyCollect ? "Bank" : "Bag");
-		}
-		void updateMoneyCollect(bool status) {
-			autoMoneyCollect = status;
-		}
-
 		// TODO: make it private?
 		uint32_t marriage;
 		uint64_t balance;
 		double rates[SKILL__LAST + 1];
 
-		uint8_t getCurrentMount() const;
-		void setCurrentMount(uint8_t mountId);
-		bool isMounted() const {
-			return defaultOutfit.lookMount != 0;
-		}
-		bool toggleMount(bool mount);
-		bool hasMount(const Mount* mount) const;
-		void dismount();
-		bool hasDll() const {return isDll;}
-		bool isDll;
-		bool wasMounted = false;
-
 	protected:
-		static uint32_t playerAutoID;
-
 		void checkTradeState(const Item* item);
 		void internalAddDepot(Depot* depot, uint32_t depotId);
 
@@ -882,16 +841,10 @@ class Player : public Creature, public Cylinder
 		virtual void __internalAddThing(Thing* thing);
 		virtual void __internalAddThing(uint32_t index, Thing* thing);
 
-		uint32_t getVocAttackSpeed() const {return vocation->getAttackSpeed();}
-		virtual int32_t getStepSpeed() const
+		uint32_t getVocAttackSpeed() const {return vocation->getAttackSpeed() - getPlayer()->getExtraAttackSpeed();}
+		int32_t getStepSpeed() const override
 		{
-			if(getSpeed() > SPEED_MAX)
-				return SPEED_MAX;
-
-			if(getSpeed() < SPEED_MIN)
-				return SPEED_MIN;
-
-			return getSpeed();
+			return std::max<int32_t>(SPEED_MIN, std::min<int32_t>(SPEED_MAX, getSpeed()));
 		}
 
 		virtual uint32_t getDamageImmunities() const {return damageImmunities;}
@@ -908,7 +861,6 @@ class Player : public Creature, public Cylinder
 		bool hasCapacity(const Item* item, uint32_t count) const;
 
 	private:
-		bool is_spectating;
 		bool talkState[13];
 		bool inventoryAbilities[SLOT_LAST];
 		bool pzLocked;
@@ -919,10 +871,7 @@ class Player : public Creature, public Cylinder
 		bool addAttackSkillPoint;
 		bool pvpBlessing;
 		bool sentChat;
-		// autoloot
-		bool autoLootStatus;
-		bool autoMoneyCollect;
-		std::list<uint16_t> AutoLoot;
+		static uint32_t playerAutoID;
 
 		OperatingSystem_t operatingSystem;
 		AccountManager_t accountManager;
@@ -941,8 +890,6 @@ class Player : public Creature, public Cylinder
 		uint16_t lastStatsTrainingTime;
 
 		int32_t premiumDays;
-		uint16_t localPing = 0;
-		uint16_t fps = 0;
 		int32_t soul;
 		int32_t soulMax;
 		int32_t vocationId;
@@ -961,6 +908,7 @@ class Player : public Creature, public Cylinder
 		uint32_t clientVersion;
 		uint32_t messageTicks;
 		uint32_t idleTime;
+		uint32_t extraAttackSpeed;
 		uint32_t accountId;
 		uint32_t lastIP;
 		uint32_t level;

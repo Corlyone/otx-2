@@ -26,6 +26,7 @@
 #include "creature.h"
 #include "player.h"
 #include "weapons.h"
+#include "tile.h"
 
 extern Game g_game;
 extern Weapons* g_weapons;
@@ -89,6 +90,7 @@ bool Combat::getMinMaxValues(Creature* creature, Creature* target, CombatParams&
 
 				case FORMULA_SKILL:
 				{
+					bool crit = false;
 					Item* item = player->getWeapon(false);
 					if(const Weapon* weapon = g_weapons->getWeapon(item))
 					{
@@ -99,14 +101,18 @@ bool Combat::getMinMaxValues(Creature* creature, Creature* target, CombatParams&
 							_params.element.damage = random_range((int32_t)0, (int32_t)(_params.element.damage * maxa + maxb), DISTRO_NORMAL);
 						}
 
-						max = (int32_t)(weapon->getWeaponDamage(player, target, item, true) * maxa + maxb);
+						max = (int32_t)(weapon->getWeaponDamage(player, target, item, crit, true) * maxa + maxb);
 						if(params.useCharges && item->hasCharges() && g_config.getBool(ConfigManager::REMOVE_WEAPON_CHARGES))
 							g_game.transformItem(item, item->getID(), std::max((int32_t)0, ((int32_t)item->getCharges()) - 1));
 					}
 					else
 						max = (int32_t)maxb;
 
-					min = (int32_t)minb;
+					if(crit)
+						min = max;
+					else
+						min = (int32_t)minb;
+
 					if(maxc && std::abs(max) < std::abs(maxc))
 						max = maxc;
 
@@ -220,7 +226,7 @@ ConditionType_t Combat::DamageToConditionType(CombatType_t type)
 	return CONDITION_NONE;
 }
 
-ReturnValue Combat::canDoCombat(const Creature* caster, const Tile* tile, bool isAggressive, bool/* createItem*/)
+ReturnValue Combat::canDoCombat(const Creature* caster, const Tile* tile, bool isAggressive, bool createItem)
 {
 	if(tile->hasProperty(BLOCKPROJECTILE) || tile->floorChange() || tile->getTeleportItem())
 		return RET_NOTENOUGHROOM;
@@ -271,6 +277,25 @@ ReturnValue Combat::canDoCombat(const Creature* attacker, const Creature* target
 
 	if(!success)
 		return RET_NOTPOSSIBLE;
+	
+	if(g_config.getBool(ConfigManager::MONSTER_ATTACK_MONSTER))
+	{
+		if(target->getType() == CREATURETYPE_MONSTER && attacker->getType() == CREATURETYPE_MONSTER && !target->isPlayerSummon() && !attacker->isPlayerSummon())
+			return RET_NOTPOSSIBLE;
+
+		if(!attacker->isSummon() && !target->isSummon()) {
+			if(attacker->getType() == CREATURETYPE_MONSTER && target->getType() == CREATURETYPE_MONSTER)
+				return RET_NOTPOSSIBLE;
+		}
+	}
+	
+	if (attacker->isSummon())
+	{
+		if (target == attacker->getMaster())
+		{
+			return RET_NOTPOSSIBLE;
+		}
+	}
 
 	bool checkZones = false;
 	if(const Player* targetPlayer = target->getPlayer())
@@ -282,7 +307,7 @@ ReturnValue Combat::canDoCombat(const Creature* attacker, const Creature* target
 		if((attackerPlayer = attacker->getPlayer()) || (attackerPlayer = attacker->getPlayerMaster()))
 		{
 			checkZones = true;
-			if((g_game.getWorldType() == WORLDTYPE_OPTIONAL && !Combat::isInPvpZone(attacker, target)
+			if((g_game.getWorldType(attackerPlayer, targetPlayer) == WORLDTYPE_OPTIONAL && !Combat::isInPvpZone(attacker, target)
 				&& !attackerPlayer->isEnemy(targetPlayer, true)) || isProtected(const_cast<Player*>(attackerPlayer),
 				const_cast<Player*>(targetPlayer)) || (g_config.getBool(ConfigManager::CANNOT_ATTACK_SAME_LOOKFEET)
 				&& attackerPlayer->getDefaultOutfit().lookFeet == targetPlayer->getDefaultOutfit().lookFeet)
@@ -292,11 +317,8 @@ ReturnValue Combat::canDoCombat(const Creature* attacker, const Creature* target
 	}
 	else if(target->getMonster())
 	{
-        	if(attacker->getMonster() && !target->getPlayerMaster() && !attacker->getPlayerMaster())
-            		return RET_YOUMAYNOTATTACKTHISCREATURE;
-           
-        	if(!target->isAttackable())
-            		return RET_YOUMAYNOTATTACKTHISCREATURE;
+		if(!target->isAttackable())
+			return RET_YOUMAYNOTATTACKTHISCREATURE;
 
 		const Player* attackerPlayer = NULL;
 		if((attackerPlayer = attacker->getPlayer()) || (attackerPlayer = attacker->getPlayerMaster()))
@@ -307,14 +329,12 @@ ReturnValue Combat::canDoCombat(const Creature* attacker, const Creature* target
 			if(target->isPlayerSummon())
 			{
 				checkZones = true;
-				if(g_game.getWorldType() == WORLDTYPE_OPTIONAL && !Combat::isInPvpZone(attacker, target)
-					&& !attackerPlayer->isEnemy(target->getPlayerMaster(), true))
+				if(g_game.getWorldType(attackerPlayer, target->getPlayerMaster()) == WORLDTYPE_OPTIONAL &&
+					!Combat::isInPvpZone(attacker, target) && !attackerPlayer->isEnemy(target->getPlayerMaster(), true))
 					return RET_YOUMAYNOTATTACKTHISCREATURE;
 			}
 		}
 	}
-	else if(target->getNpc() && !target->isAttackable())
-		return RET_YOUMAYNOTATTACKTHISCREATURE;
 
 	return checkZones && (target->getTile()->hasFlag(TILESTATE_OPTIONALZONE) ||
 		(attacker->getTile()->hasFlag(TILESTATE_OPTIONALZONE)
@@ -367,15 +387,15 @@ ReturnValue Combat::canTargetCreature(const Player* player, const Creature* targ
 		if(player->getSecureMode() == SECUREMODE_ON)
 			return RET_TURNSECUREMODETOATTACKUNMARKEDPLAYERS;
 
-		if(player->getSkull() == SKULL_BLACK)
-			return RET_YOUMAYNOTATTACKTHISPLAYER;
+		if(g_config.getBool(ConfigManager::USE_BLACK_SKULL))
+		{
+			if(player->getSkull() == SKULL_BLACK)
+				return RET_YOUMAYNOTATTACKTHISPLAYER;
+		}
 	}
-
-	if(!g_config.getBool(ConfigManager::ATTACK_IMMEDIATELY_AFTER_LOGGING_IN))
-	{
-		if(player->checkLoginDelay())
-			return RET_YOUMAYNOTATTACKIMMEDIATELYAFTERLOGGINGIN;
-	}
+	
+	if (target->getNpc())
+		return RET_YOUMAYNOTATTACKTHISCREATURE;
 
 	return Combat::canDoCombat(player, target, true);
 }
@@ -395,6 +415,9 @@ bool Combat::isProtected(Player* attacker, Player* target)
 
 	if(attacker->getZone() == ZONE_HARDCORE && target->getZone() == ZONE_HARDCORE && g_config.getBool(ConfigManager::PVP_TILE_IGNORE_PROTECTION))
 		return false;
+	
+	if (target->checkLoginDelay())
+		return true;
 
 	return target->isProtected() || attacker->isProtected() || (attacker->checkLoginDelay() && !attacker->hasBeenAttacked(target->getID()));
 }
@@ -558,11 +581,23 @@ bool Combat::CombatHealthFunc(Creature* caster, Creature* target, const CombatPa
 	if(_params.element.damage && _params.element.type != COMBAT_NONE)
 		g_game.combatBlockHit(_params.element.type, caster, target, _params.element.damage, params.blockedByShield, params.blockedByArmor, params.itemId != 0, true);
 
-	if(caster && caster->getPlayer() && target->getPlayer() && target->getSkull() != SKULL_BLACK)
+	if(g_config.getBool(ConfigManager::USE_BLACK_SKULL))
 	{
-		_params.element.damage /= 2;
-		if(change < 0)
-			change /= 2;
+		if(caster && caster->getPlayer() && target->getPlayer() && target->getSkull() != SKULL_BLACK)
+		{
+			_params.element.damage /= 2;
+			if(change < 0)
+				change /= 2;
+		}
+	}
+	else
+	{
+		if(caster && caster->getPlayer() && target->getPlayer())
+		{
+			_params.element.damage /= 2;
+			if(change < 0)
+				change /= 2;
+		}
 	}
 
 	if(!g_game.combatChangeHealth(_params, caster, target, change, false))
@@ -586,8 +621,16 @@ bool Combat::CombatManaFunc(Creature* caster, Creature* target, const CombatPara
 	if(g_game.combatBlockHit(COMBAT_MANADRAIN, caster, target, change, false, false, params.itemId != 0))
 		return false;
 
-	if(change < 0 && caster && caster->getPlayer() && target->getPlayer() && target->getSkull() != SKULL_BLACK)
-		change /= 2;
+	if(g_config.getBool(ConfigManager::USE_BLACK_SKULL))
+	{
+		if(change < 0 && caster && caster->getPlayer() && target->getPlayer() && target->getSkull() != SKULL_BLACK)
+			change /= 2;
+	}
+	else
+	{
+		if(change < 0 && caster && caster->getPlayer() && target->getPlayer())
+			change /= 2;
+	}
 
 	if(!g_game.combatChangeMana(caster, target, change))
 		return false;
@@ -635,9 +678,13 @@ bool Combat::CombatDispelFunc(Creature* caster, Creature* target, const CombatPa
 	{
 		if(Player* player = target->getPlayer())
 		{
+			Player* casterPlayer = NULL;
+			if(caster)
+				casterPlayer = caster->getPlayer();
+
 			Item* item = player->getEquippedItem(SLOT_RING);
-			if(item && item->getID() == ITEM_STEALTH_RING && (g_game.getWorldType() == WORLDTYPE_HARDCORE
-				|| player->getTile()->hasFlag(TILESTATE_HARDCOREZONE)) && random_range(1, 100) <= 10)
+			if(item && item->getID() == ITEM_STEALTH_RING && (g_game.getWorldType(casterPlayer, player)
+				== WORLDTYPE_HARDCORE || player->getTile()->hasFlag(TILESTATE_HARDCOREZONE)) && random_range(1, 100) <= 10)
 				g_game.internalRemoveItem(NULL, item);
 		}
 	}
@@ -655,10 +702,8 @@ bool Combat::CombatNullFunc(Creature* caster, Creature* target, const CombatPara
 
 void Combat::combatTileEffects(const SpectatorVec& list, Creature* caster, Tile* tile, const CombatParams& params)
 {
-	if (!tile)
-	{
+	if(!tile)
 		return;
-	}
 
 	if(params.itemId)
 	{
@@ -675,8 +720,8 @@ void Combat::combatTileEffects(const SpectatorVec& list, Creature* caster, Tile*
 		if(player)
 		{
 			bool pzLock = false;
-			if((g_game.getWorldType() == WORLDTYPE_OPTIONAL && !tile->hasFlag(
-				TILESTATE_HARDCOREZONE)) || tile->hasFlag(TILESTATE_OPTIONALZONE))
+			if(((g_game.getWorldType(player) == WORLDTYPE_OPTIONAL || g_config.getBool(ConfigManager::OPTIONAL_PROTECTION))
+				&& !tile->hasFlag(TILESTATE_HARDCOREZONE)) || tile->hasFlag(TILESTATE_OPTIONALZONE))
 			{
 				switch(itemId)
 				{
@@ -707,12 +752,8 @@ void Combat::combatTileEffects(const SpectatorVec& list, Creature* caster, Tile*
 
 		if(Item* item = Item::CreateItem(itemId))
 		{
-			if(caster) {
+			if(caster)
 				item->setOwner(caster->getID());
-				if (item->getID() == ITEM_MAGICWALL_SAFE || item->getID() == ITEM_MAGICWALL || item->getID() == ITEM_WILDGROWTH || item->getID() == ITEM_ENERGYFIELD || item->getID() == ITEM_POISONFIELD || item->getID() == ITEM_FIREFIELD) {
-					item->setSpecialDescription("Owner: " + caster->getName() + ".");
-				}
-			}
 
 			if(g_game.internalAddItem(caster, tile, item) == RET_NOERROR)
 				g_game.startDecay(item);
@@ -1190,6 +1231,16 @@ CombatArea::CombatArea(const CombatArea& rhs)
 bool CombatArea::getList(const Position& centerPos, const Position& targetPos, std::list<Tile*>& list) const
 {
 	Tile* tile = g_game.getTile(targetPos);
+	if(tile)
+	{
+		if(tile->hasProperty(BLOCKPROJECTILE))
+			return false;
+		if(tile->hasFlag(TILESTATE_FLOORCHANGE))
+			return false;
+		if(tile->getTeleportItem())
+			return false;
+	}
+
 	const MatrixArea* area = getArea(centerPos, targetPos);
 	if(!area)
 		return false;
@@ -1472,11 +1523,11 @@ bool MagicField::isBlocking(const Creature* creature) const
 
 void MagicField::onStepInField(Creature* creature)
 {
-     if(!creature)
+	if(!creature)
 		return;
-		
+
 	//remove magic walls/wild growth
-	if(isUnstepable() || isBlocking(creature))
+	if(isUnstepable() || id == ITEM_MAGICWALL || id == ITEM_WILDGROWTH || id == ITEM_MAGICWALL_SAFE || id == ITEM_WILDGROWTH_SAFE || isBlocking(creature))
 	{
 		if(!creature->isGhost())
 			g_game.internalRemoveItem(creature, this, 1);
@@ -1485,37 +1536,36 @@ void MagicField::onStepInField(Creature* creature)
 	}
 
 	const ItemType& it = items[id];
-	if (it.condition) {
-		Condition* conditionCopy = it.condition->clone();
-		uint32_t ownerId = getOwner();
-		if (ownerId && !getTile()->hasFlag(TILESTATE_HARDCOREZONE)) {
-			bool harmfulField = true;
+	if(!it.condition)
+		return;
 
-			if (g_game.getWorldType() == WORLDTYPE_OPTIONAL || getTile()->hasFlag(TILESTATE_OPTIONALZONE)) {
-				Creature* owner = g_game.getCreatureByID(ownerId);
-				if (owner) {
-					if (owner->getPlayer() || (owner->isSummon() && owner->getMaster()->getPlayer())) {
-						harmfulField = false;
-					}
-				}
+	uint32_t ownerId = getOwner();
+	Tile* tile = getTile();
+
+	Condition* condition = it.condition->clone();
+	if(ownerId && !tile->hasFlag(TILESTATE_HARDCOREZONE))
+	{
+		if(Creature* owner = g_game.getCreatureByID(ownerId))
+		{
+			Player* ownerPlayer = owner->getPlayer();
+			if(!ownerPlayer && owner->isPlayerSummon())
+				ownerPlayer = owner->getPlayerMaster();
+
+			bool harmful = true;
+			if(ownerPlayer && (tile->hasFlag(TILESTATE_OPTIONALZONE) || g_game.getWorldType(
+				ownerPlayer, creature->getPlayer()) == WORLDTYPE_OPTIONAL))
+				harmful = false;
+			else if(Player* player = creature->getPlayer())
+			{
+				if(ownerPlayer && Combat::isProtected(ownerPlayer, player))
+					harmful = false;
 			}
 
-			Player* targetPlayer = creature->getPlayer();
-			if (targetPlayer) {
-				Player* attackerPlayer = g_game.getPlayerByID(ownerId);
-				if (attackerPlayer) {
-					if (Combat::isProtected(attackerPlayer, targetPlayer)) {
-						harmfulField = false;
-					}
-				}
-			}
-
-			if (!harmfulField || (OTSYS_TIME() - createTime <= (uint32_t)g_config.getNumber(
-				ConfigManager::FIELD_OWNERSHIP)) || creature->hasBeenAttacked(ownerId)) {
-				conditionCopy->setParam(CONDITIONPARAM_OWNER, ownerId);
-			}
+			if(!harmful || (OTSYS_TIME() - createTime) <= (uint32_t)g_config.getNumber(
+				ConfigManager::FIELD_OWNERSHIP) || creature->hasBeenAttacked(ownerId))
+				condition->setParam(CONDITIONPARAM_OWNER, ownerId);
 		}
-
-		creature->addCondition(conditionCopy);
 	}
+
+	creature->addCondition(condition);
 }

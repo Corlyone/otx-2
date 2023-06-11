@@ -15,6 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 
+#define BOOST_BIND_NO_PLACEHOLDERS
 #ifdef __OTPCH__
 #error "Precompiled header should be included only once."
 #endif
@@ -25,6 +26,7 @@
 #define strncasecmp _strnicmp
 #define strcasecmp _stricmp
 #endif
+
 
 #if defined WINDOWS
 #include <winerror.h>
@@ -44,8 +46,3 @@
 //otserv
 #include "configmanager.h"
 #include "thing.h"
-
-//GUI
-#include "gui.h"
-#include "inputbox.h"
-#include "playerbox.h"
